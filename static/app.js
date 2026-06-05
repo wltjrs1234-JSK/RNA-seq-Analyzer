@@ -85,11 +85,35 @@ function enableAnalysisTabs() {
 // 2. File Upload & Mock Data
 // ----------------------------------------------------------------------
 function initDropzone() {
+    // 1. File Upload Elements
     const dropzone = document.getElementById("dropzone");
     const fileInput = document.getElementById("file-input");
     const fileInfo = document.getElementById("file-info");
     const selectedFileName = document.getElementById("selected-file-name");
     const analyzeBtn = document.getElementById("analyze-btn");
+    
+    // 2. Text Upload Elements
+    const toggleFileUpload = document.getElementById("toggle-file-upload");
+    const toggleTextUpload = document.getElementById("toggle-text-upload");
+    const fileUploadContainer = document.getElementById("file-upload-container");
+    const textUploadContainer = document.getElementById("text-upload-container");
+    const analyzeTextBtn = document.getElementById("analyze-text-btn");
+    const rawTextInput = document.getElementById("raw-text-input");
+    
+    // Toggle UI logic
+    toggleFileUpload.addEventListener("click", () => {
+        toggleFileUpload.classList.add("active");
+        toggleTextUpload.classList.remove("active");
+        fileUploadContainer.style.display = "block";
+        textUploadContainer.style.display = "none";
+    });
+    
+    toggleTextUpload.addEventListener("click", () => {
+        toggleTextUpload.classList.add("active");
+        toggleFileUpload.classList.remove("active");
+        textUploadContainer.style.display = "block";
+        fileUploadContainer.style.display = "none";
+    });
     
     // Trigger input click on dropzone click
     dropzone.addEventListener("click", () => fileInput.click());
@@ -131,6 +155,16 @@ function initDropzone() {
         
         uploadFile(file);
     });
+    
+    // Text paste analysis trigger
+    analyzeTextBtn.addEventListener("click", () => {
+        const text = rawTextInput.value.trim();
+        if (!text) {
+            alert("텍스트 입력창에 복사한 RNA-seq 데이터를 붙여넣어 주세요.");
+            return;
+        }
+        uploadText(text);
+    });
 }
 
 function updateStatus(state, text) {
@@ -152,6 +186,29 @@ function uploadFile(file) {
     .then(response => {
         if (!response.ok) {
             return response.json().then(err => { throw new Error(err.detail || "파일 파싱 실패") });
+        }
+        return response.json();
+    })
+    .then(data => {
+        processUploadedData(data);
+    })
+    .catch(err => {
+        alert(`에러: ${err.message}`);
+        updateStatus("ready", "대기 중");
+    });
+}
+
+function uploadText(text) {
+    updateStatus("analyzing", "데이터 분석 중...");
+    
+    fetch(`${API_URL}/api/upload_text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.detail || "텍스트 파싱 실패") });
         }
         return response.json();
     })
@@ -418,18 +475,18 @@ function renderPlot(plotType) {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: {
-            color: '#f8fafc',
+            color: '#0f172a',
             family: 'Inter, sans-serif'
         },
         xaxis: {
             title: plotType === "volcano" ? 'Log2 Fold Change' : 'Log2 Mean Expression (TPM)',
-            gridcolor: 'rgba(255,255,255,0.05)',
-            zerolinecolor: 'rgba(255,255,255,0.1)'
+            gridcolor: '#e2e8f0',
+            zerolinecolor: '#cbd5e1'
         },
         yaxis: {
             title: plotType === "volcano" ? '-Log10(FDR)' : 'Log2 Fold Change',
-            gridcolor: 'rgba(255,255,255,0.05)',
-            zerolinecolor: 'rgba(255,255,255,0.1)'
+            gridcolor: '#e2e8f0',
+            zerolinecolor: '#cbd5e1'
         },
         margin: { t: 20, r: 20, b: 50, l: 60 },
         hovermode: 'closest',
@@ -444,14 +501,14 @@ function renderPlot(plotType) {
                 type: 'line',
                 x0: -log2fcThresh, x1: -log2fcThresh,
                 y0: 0, y1: Math.max(...yData) * 1.05,
-                line: { color: 'rgba(255,255,255,0.15)', width: 1, dash: 'dash' }
+                line: { color: 'rgba(15, 23, 42, 0.25)', width: 1, dash: 'dash' }
             },
             // Vertical +thresh line
             {
                 type: 'line',
                 x0: log2fcThresh, x1: log2fcThresh,
                 y0: 0, y1: Math.max(...yData) * 1.05,
-                line: { color: 'rgba(255,255,255,0.15)', width: 1, dash: 'dash' }
+                line: { color: 'rgba(15, 23, 42, 0.25)', width: 1, dash: 'dash' }
             }
         );
         if (gIsReplicateMode && pvalThresh < 1.0) {
@@ -462,7 +519,7 @@ function renderPlot(plotType) {
                     type: 'line',
                     x0: Math.min(...xData) * 1.05, x1: Math.max(...xData) * 1.05,
                     y0: hVal, y1: hVal,
-                    line: { color: 'rgba(255,255,255,0.15)', width: 1, dash: 'dash' }
+                    line: { color: 'rgba(15, 23, 42, 0.25)', width: 1, dash: 'dash' }
                 }
             );
         }
@@ -473,13 +530,13 @@ function renderPlot(plotType) {
                 type: 'line',
                 x0: 0, x1: Math.max(...xData) * 1.05,
                 y0: log2fcThresh, y1: log2fcThresh,
-                line: { color: 'rgba(255,255,255,0.15)', width: 1, dash: 'dash' }
+                line: { color: 'rgba(15, 23, 42, 0.25)', width: 1, dash: 'dash' }
             },
             {
                 type: 'line',
                 x0: 0, x1: Math.max(...xData) * 1.05,
                 y0: -log2fcThresh, y1: -log2fcThresh,
-                line: { color: 'rgba(255,255,255,0.15)', width: 1, dash: 'dash' }
+                line: { color: 'rgba(15, 23, 42, 0.25)', width: 1, dash: 'dash' }
             }
         );
     }
@@ -584,15 +641,15 @@ function renderDetailChart(gene) {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: {
-            color: '#f8fafc',
+            color: '#0f172a',
             family: 'Inter, sans-serif'
         },
         xaxis: {
-            gridcolor: 'rgba(255,255,255,0.05)'
+            gridcolor: '#e2e8f0'
         },
         yaxis: {
             title: 'Expression (TPM/FPKM)',
-            gridcolor: 'rgba(255,255,255,0.05)'
+            gridcolor: '#e2e8f0'
         },
         margin: { t: 20, r: 10, b: 30, l: 50 },
         showlegend: false
@@ -711,7 +768,7 @@ function renderHeatmap() {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         font: {
-            color: '#f8fafc',
+            color: '#0f172a',
             family: 'Inter, sans-serif'
         },
         margin: { t: 20, r: 20, b: 60, l: 150 },
@@ -997,9 +1054,9 @@ function showGeneDetailsModal(gene) {
     const layout = {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        font: { color: '#f8fafc', family: 'Inter, sans-serif' },
-        xaxis: { gridcolor: 'rgba(255,255,255,0.05)' },
-        yaxis: { title: 'Expression (TPM/FPKM)', gridcolor: 'rgba(255,255,255,0.05)' }
+        font: { color: '#0f172a', family: 'Inter, sans-serif' },
+        xaxis: { gridcolor: '#e2e8f0' },
+        yaxis: { title: 'Expression (TPM/FPKM)', gridcolor: '#e2e8f0' }
     };
     
     const data = trace2 ? [trace1, trace2] : [trace1];
@@ -1054,17 +1111,32 @@ function runGOEnrichment() {
     .then(data => {
         tbody.innerHTML = "";
         
-        const enrichList = data.enrichment;
+        const enrichList = data.enrichment || [];
         if (enrichList.length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">유의미하게 농축된 GO 카테고리가 없습니다.</td></tr>`;
+            document.getElementById("go-chart-container").style.display = "none";
             return;
         }
         
-        // Display top 100 enriched terms
-        enrichList.slice(0, 100).forEach(item => {
+        // Group by ontology aspect and sort by pvalue ascending (lower is more significant)
+        const aspectOrder = ["Molecular Function", "Cellular Component", "Biological Process"];
+        const groupedList = [];
+        
+        aspectOrder.forEach(asp => {
+            const subList = enrichList.filter(item => item.aspect === asp);
+            subList.sort((a, b) => a.pvalue - b.pvalue);
+            groupedList.push(...subList);
+        });
+        
+        enrichList.forEach(item => {
+            if (!aspectOrder.includes(item.aspect)) {
+                groupedList.push(item);
+            }
+        });
+        
+        // Render sorted and grouped list to Table
+        groupedList.slice(0, 100).forEach(item => {
             const row = document.createElement("tr");
-            
-            // Format gene list snippet
             const genesListStr = item.genes.join(", ");
             const genesSnippet = genesListStr.length > 40 ? genesListStr.substring(0, 40) + "..." : genesListStr;
             
@@ -1078,9 +1150,83 @@ function runGOEnrichment() {
                 <td>${item.fdr.toExponential(4)}</td>
                 <td class="text-muted" title="${genesListStr}">${genesSnippet}</td>
             `;
-            
             tbody.appendChild(row);
         });
+
+        // Group terms for Plotly horizontal bar chart
+        // Extract top 8 terms for each category
+        const molTerms = groupedList.filter(item => item.aspect === "Molecular Function").slice(0, 8);
+        const cellTerms = groupedList.filter(item => item.aspect === "Cellular Component").slice(0, 8);
+        const bioTerms = groupedList.filter(item => item.aspect === "Biological Process").slice(0, 8);
+        
+        // Reverse arrays for correct bottom-to-top categorical plotting in Plotly
+        const chartTerms = [...molTerms.reverse(), ...cellTerms.reverse(), ...bioTerms.reverse()];
+        
+        if (chartTerms.length > 0) {
+            document.getElementById("go-chart-container").style.display = "block";
+            const allLabels = chartTerms.map(t => `${t.term_name} (${t.goid})`);
+            
+            const molTrace = {
+                x: chartTerms.map(t => t.aspect === "Molecular Function" ? -Math.log10(t.fdr || t.pvalue || 1e-10) : null),
+                y: allLabels,
+                name: 'Molecular Function',
+                type: 'bar',
+                orientation: 'h',
+                marker: { color: '#3b82f6' }
+            };
+            
+            const cellTrace = {
+                x: chartTerms.map(t => t.aspect === "Cellular Component" ? -Math.log10(t.fdr || t.pvalue || 1e-10) : null),
+                y: allLabels,
+                name: 'Cellular Component',
+                type: 'bar',
+                orientation: 'h',
+                marker: { color: '#10b981' }
+            };
+            
+            const bioTrace = {
+                x: chartTerms.map(t => t.aspect === "Biological Process" ? -Math.log10(t.fdr || t.pvalue || 1e-10) : null),
+                y: allLabels,
+                name: 'Biological Process',
+                type: 'bar',
+                orientation: 'h',
+                marker: { color: '#f87171' }
+            };
+            
+            const layout = {
+                title: {
+                    text: 'Gene Ontology Enrichment Results (-log10 q-value)',
+                    font: { size: 16, color: '#0f172a', family: 'Inter, sans-serif' }
+                },
+                barmode: 'overlay',
+                xaxis: {
+                    title: '-log10(qvalue 또는 pvalue)',
+                    gridcolor: '#e2e8f0',
+                    zerolinecolor: '#cbd5e1',
+                    tickfont: { color: '#475569' }
+                },
+                yaxis: {
+                    type: 'category',
+                    categoryorder: 'array',
+                    categoryarray: allLabels,
+                    tickfont: { size: 10, color: '#0f172a' },
+                    automargin: true
+                },
+                margin: { l: 280, r: 20, t: 50, b: 50 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                legend: {
+                    title: { text: 'GO Aspect' },
+                    font: { color: '#0f172a' },
+                    orientation: 'h',
+                    y: -0.2
+                }
+            };
+            
+            Plotly.newPlot('go-bar-chart', [molTrace, cellTrace, bioTrace], layout, {responsive: true});
+        } else {
+            document.getElementById("go-chart-container").style.display = "none";
+        }
     })
     .catch(err => {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">에러 발생: ${err.message}</td></tr>`;

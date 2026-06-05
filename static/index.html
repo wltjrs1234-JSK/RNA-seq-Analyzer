@@ -79,22 +79,38 @@
                     <div class="grid-layout">
                         <!-- Upload Card -->
                         <div class="card glass-card upload-section">
-                            <div class="card-header">
-                                <h3 class="card-title"><i class="fa-solid fa-file-excel icon-margin"></i>RNA-seq 데이터 파일 업로드</h3>
+                            <div class="card-header flex-header">
+                                <h3 class="card-title"><i class="fa-solid fa-file-excel icon-margin"></i>RNA-seq 데이터 업로드</h3>
+                                <div class="btn-group" role="group">
+                                    <button class="btn-toggle active" id="toggle-file-upload">파일 업로드</button>
+                                    <button class="btn-toggle" id="toggle-text-upload">텍스트 직접 입력</button>
+                                </div>
                             </div>
                             <div class="card-body">
-                                <div class="dropzone" id="dropzone">
-                                    <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display: none;">
-                                    <i class="fa-solid fa-cloud-arrow-up upload-big-icon"></i>
-                                    <p class="dropzone-text">Excel (.xlsx, .xls) 또는 CSV 파일을 여기로 드래그하거나 클릭하여 선택하세요.</p>
-                                    <p class="dropzone-hint">locus_tag(예: YAL038W), Gene_Symbol, 발현량(TPM/FPKM/Read count) 열을 포함해야 합니다.</p>
-                                </div>
-                                <div class="file-info-box" id="file-info" style="display: none;">
-                                    <div class="file-icon-name">
-                                        <i class="fa-regular fa-file-excel file-excel-icon"></i>
-                                        <span id="selected-file-name">filename.xlsx</span>
+                                <!-- File Upload Method -->
+                                <div id="file-upload-container">
+                                    <div class="dropzone" id="dropzone">
+                                        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display: none;">
+                                        <i class="fa-solid fa-cloud-arrow-up upload-big-icon"></i>
+                                        <p class="dropzone-text">Excel (.xlsx, .xls) 또는 CSV 파일을 여기로 드래그하거나 클릭하여 선택하세요.</p>
+                                        <p class="dropzone-hint">locus_tag(예: YAL038W), Gene_Symbol, 발현량(TPM/FPKM/Read count) 열을 포함해야 합니다.</p>
                                     </div>
-                                    <button class="btn btn-primary" id="analyze-btn">분석 시작하기</button>
+                                    <div class="file-info-box" id="file-info" style="display: none;">
+                                        <div class="file-icon-name">
+                                            <i class="fa-regular fa-file-excel file-excel-icon"></i>
+                                            <span id="selected-file-name">filename.xlsx</span>
+                                        </div>
+                                        <button class="btn btn-primary" id="analyze-btn">분석 시작하기</button>
+                                    </div>
+                                </div>
+
+                                <!-- Text Upload Method (Hidden by default) -->
+                                <div id="text-upload-container" style="display: none;">
+                                    <div class="text-upload-box">
+                                        <p class="guide-text" style="font-size: 13px; margin-bottom: 10px;">엑셀이나 메모장에서 데이터를 복사하여 아래에 붙여넣으세요. 첫 행은 열 이름(Header)을 포함해야 하며, 탭(Tab) 또는 쉼표(,), 공백으로 구분된 형식이어야 합니다.</p>
+                                        <textarea id="raw-text-input" class="input-textarea" placeholder="locus_tag&#9;WT_1&#9;WT_2&#9;WT_3&#9;Mutant_1&#9;Mutant_2&#9;Mutant_3&#10;YAL038W&#9;2340.5&#9;2590.2&#9;3010.8&#9;519.3&#9;530.1&#9;460.2&#10;YGR192C&#9;1500.1&#9;1620.4&#9;1450.9&#9;3200.8&#9;3150.2&#9;3410.5&#10;..."></textarea>
+                                        <button class="btn btn-primary btn-full" id="analyze-text-btn" style="margin-top: 15px;">붙여넣은 데이터 분석 시작</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -346,6 +362,11 @@
                             <div class="alert-box mb-20">
                                 <i class="fa-solid fa-info alert-icon"></i>
                                 <p class="alert-text">선택한 유전자군에 대해 <strong>SGD Yeast GO Slim</strong> 데이터셋을 기반으로 Hypergeometric test(초기하 분포 통계 검정)를 수행하여 통계적으로 유의미한 기능 범주를 도출합니다.</p>
+                            </div>
+                            
+                            <!-- GO Enrichment Grouped Bar Chart Visualizer -->
+                            <div class="go-chart-container" id="go-chart-container" style="display: none; margin-bottom: 24px; min-height: 450px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px;">
+                                <div id="go-bar-chart" style="width: 100%; height: 450px;"></div>
                             </div>
                             
                             <div class="table-responsive max-height-table">

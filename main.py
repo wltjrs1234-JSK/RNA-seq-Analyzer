@@ -140,187 +140,210 @@ def get_kegg_gene_mapping():
 # In a real app we might use a session or database, but here we can save it to a JSON file temp_parsed.json
 PARSED_DATA_PATH = os.path.join(CACHE_DIR, "temp_parsed.json")
 
-@app.post("/api/upload")
-def upload_file(file: UploadFile = File(...)):
-    """Upload Excel/CSV and calculate DEG statistics."""
-    temp_path = os.path.join(CACHE_DIR, file.filename)
-    try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # Parse based on extension
-        if file.filename.endswith((".xlsx", ".xls")):
-            df = pd.read_excel(temp_path)
-        else:
-            df = pd.read_csv(temp_path)
-            
-        os.remove(temp_path) # Clean up file
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
-
-    # Clean columns
-    df.columns = [c.strip() for c in df.columns]
+def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
+    """Helper to automatically parse RNA-seq DataFrame, detect columns, and run statistical analysis."""
+    # 1. Clean column names
+    df.columns = [str(c).strip() for c in df.columns]
     
-    # Find locus_tag column
+    # 2. Find locus_tag column
     locus_col = None
+    # Prioritize by column name
     for col in df.columns:
-        if col.lower() in ["locus_tag", "locus", "systematic_name", "orf", "orf_name"]:
+        if col.lower() in ["locus_tag", "locus", "systematic_name", "orf", "orf_name", "systematic", "gene_id", "id"]:
             locus_col = col
             break
+            
+    # Fallback/validation: check contents for systematic name pattern (e.g. YAL038W)
     if not locus_col:
-        # Check contents of columns to find locus tag pattern (e.g. YAL038W)
+        best_col = None
+        best_rate = 0.0
         for col in df.columns:
-            non_nulls = df[col].dropna()
-            if not non_nulls.empty and non_nulls.astype(str).str.match(r"^Y[A-P][0-9]{3}[C,W](-[A-G])?$", case=False).mean() > 0.5:
-                locus_col = col
-                break
-    if not locus_col:
-        raise HTTPException(status_code=400, detail="유전자 Systematic Name (locus_tag, 예: YAL038W) 열을 찾을 수 없습니다. 열 이름을 'locus_tag'로 지정해주세요.")
+            non_nulls = df[col].dropna().astype(str).str.strip()
+            if non_nulls.empty:
+                continue
+            # Match Yeast systematic name pattern
+            matches = non_nulls.str.match(r"^Y[A-P][0-9]{3}[C,W](-[A-G])?$", case=False)
+            rate = matches.mean()
+            if rate > best_rate:
+                best_rate = rate
+                best_col = col
+        if best_rate > 0.3: # If at least 30% of rows match yeast ORF pattern
+            locus_col = best_col
 
-    # Find gene symbol column
+    if not locus_col:
+        # Fallback to first column
+        if len(df.columns) > 0:
+            locus_col = df.columns[0]
+        else:
+            raise HTTPException(status_code=400, detail="데이터에 열이 존재하지 않습니다.")
+
+    # 3. Find gene symbol column
     symbol_col = None
     for col in df.columns:
-        if col.lower() in ["gene_symbol", "symbol", "gene", "gene_name"]:
+        if col.lower() in ["gene_symbol", "symbol", "gene", "gene_name", "name"]:
             symbol_col = col
             break
     if not symbol_col:
-        symbol_col = locus_col # Fallback to locus_tag
+        for col in df.columns:
+            if col != locus_col and col.lower() not in ["description", "gene_biotype"]:
+                non_nulls = df[col].dropna().astype(str).str.strip()
+                if not non_nulls.empty and non_nulls.str.match(r"^[A-Z]{3}[0-9]+", case=True).mean() > 0.4:
+                    symbol_col = col
+                    break
+    if not symbol_col:
+        symbol_col = locus_col # Fallback
 
-    # Detect replicates vs average columns
-    mut_rep_cols = []
-    wt_rep_cols = []
-    
-    # Replicates detection (e.g. Mutant_TPM_1, WT_TPM_1)
+    # 4. Find Description and Biotype columns
+    desc_col = None
     for col in df.columns:
-        if "mutant" in col.lower() and any(x in col.lower() for x in ["tpm", "fpkm", "count", "read"]) and re.search(r"\d+$", col):
-            mut_rep_cols.append(col)
-        elif "wt" in col.lower() and any(x in col.lower() for x in ["tpm", "fpkm", "count", "read"]) and re.search(r"\d+$", col):
-            wt_rep_cols.append(col)
+        if "desc" in col.lower():
+            desc_col = col
+            break
             
-    is_replicate_mode = len(mut_rep_cols) >= 2 and len(wt_rep_cols) >= 2
+    biotype_col = None
+    for col in df.columns:
+        if "biotype" in col.lower() or "type" in col.lower():
+            biotype_col = col
+            break
+
+    # 5. Classify numeric columns for expression values
+    numeric_cols = []
+    for col in df.columns:
+        if col != locus_col and col != symbol_col and col != desc_col and col != biotype_col:
+            try:
+                pd.to_numeric(df[col].dropna())
+                numeric_cols.append(col)
+            except:
+                pass
+
+    # Group numeric columns into WT and Mutant
+    # Use word-boundary aware regex matching to avoid false positives like "t" in "WT"
+    import re as _re
+    
+    # Strict word patterns: must appear as standalone token separated by _ - . space or number boundary
+    wt_patterns = [r"\bwt\b", r"\bcontrol\b", r"\bctrl\b", r"\bcon\b", r"\bwildtype\b", r"\bwild_type\b", r"\breference\b", r"\bref\b"]
+    mut_patterns = [r"\bmutant\b", r"\bmut\b", r"\bko\b", r"\btreatment\b", r"\btreat\b", r"\btarget\b", r"\boverexpression\b", r"\boe\b",
+                    r"(?:^|[_\-\.])m(?:[_\-\.]|$|\d)"]
+
+    wt_cols = []
+    mut_cols = []
+
+    def matches_any(colname, patterns):
+        cn = colname.lower()
+        return any(_re.search(pat, cn) for pat in patterns)
+
+    for col in numeric_cols:
+        is_wt  = matches_any(col, wt_patterns)
+        is_mut = matches_any(col, mut_patterns)
+
+        if is_wt and not is_mut:
+            wt_cols.append(col)
+        elif is_mut and not is_wt:
+            mut_cols.append(col)
+        elif is_wt and is_mut:
+            mut_cols.append(col)
+            
+    # Fallback splitting if we couldn't classify them
+    unclassified = [c for c in numeric_cols if c not in wt_cols and c not in mut_cols]
+    if not wt_cols or not mut_cols:
+        if len(numeric_cols) == 2:
+            wt_cols = [numeric_cols[0]]
+            mut_cols = [numeric_cols[1]]
+        elif len(unclassified) >= 2:
+            half = len(unclassified) // 2
+            wt_cols = wt_cols + unclassified[:half]
+            mut_cols = mut_cols + unclassified[half:]
+            
+    if not wt_cols or not mut_cols:
+        raise HTTPException(
+            status_code=400, 
+            detail="대조군(WT) 및 실험군(Mutant) 발현량 데이터를 나타내는 숫자 열을 감지할 수 없습니다. 열 이름에 'WT', 'Mutant', 'Control' 등을 포함해 주세요."
+        )
+
+    # Determine replicate mode
+    is_replicate_mode = len(wt_cols) >= 2 and len(mut_cols) >= 2
     
     genes_list = []
     
-    if is_replicate_mode:
-        print(f"Replicate mode detected: Mutant={mut_rep_cols}, WT={wt_rep_cols}")
-        for _, row in df.iterrows():
-            locus = str(row[locus_col]).strip()
-            symbol = str(row[symbol_col]).strip() if pd.notna(row[symbol_col]) else locus
-            desc = str(row["Description"]) if "Description" in df.columns and pd.notna(row["Description"]) else ""
-            biotype = str(row["gene_biotype"]) if "gene_biotype" in df.columns and pd.notna(row["gene_biotype"]) else "protein_coding"
+    for _, row in df.iterrows():
+        if pd.isna(row[locus_col]):
+            continue
+        locus = str(row[locus_col]).strip()
+        if not locus:
+            continue
             
-            mut_vals = [float(row[c]) for c in mut_rep_cols if pd.notna(row[c])]
-            wt_vals = [float(row[c]) for c in wt_rep_cols if pd.notna(row[c])]
+        symbol = str(row[symbol_col]).strip() if symbol_col in row and pd.notna(row[symbol_col]) else locus
+        
+        # Check if description column exists and parse
+        desc = ""
+        if desc_col and desc_col in row and pd.notna(row[desc_col]):
+            desc = str(row[desc_col]).strip()
+        elif "Description" in df.columns and pd.notna(row["Description"]):
+            desc = str(row["Description"]).strip()
             
-            if len(mut_vals) < 2 or len(wt_vals) < 2:
-                continue
-                
-            mut_mean = np.mean(mut_vals)
-            wt_mean = np.mean(wt_vals)
+        # Check if biotype column exists and parse
+        biotype = "protein_coding"
+        if biotype_col and biotype_col in row and pd.notna(row[biotype_col]):
+            biotype = str(row[biotype_col]).strip()
+        elif "gene_biotype" in df.columns and pd.notna(row["gene_biotype"]):
+            biotype = str(row["gene_biotype"]).strip()
+        
+        wt_vals = [float(row[c]) for c in wt_cols if pd.notna(row[c])]
+        mut_vals = [float(row[c]) for c in mut_cols if pd.notna(row[c])]
+        
+        if not wt_vals or not mut_vals:
+            continue
             
-            # Welch's t-test
+        wt_mean = np.mean(wt_vals)
+        mut_mean = np.mean(mut_vals)
+        
+        # Log2 Fold Change
+        log2fc = np.log2((mut_mean + 0.01) / (wt_mean + 0.01))
+        
+        gene_item = {
+            "locus_tag": locus,
+            "gene_symbol": symbol,
+            "description": desc,
+            "biotype": biotype,
+            "wt_val": round(wt_mean, 2),
+            "mutant_val": round(mut_mean, 2),
+            "log2fc": round(float(log2fc), 4),
+            "pvalue": None,
+            "fdr": None
+        }
+        
+        if is_replicate_mode:
             t_stat, p_val = stats.ttest_ind(mut_vals, wt_vals, equal_var=False)
             if np.isnan(p_val):
                 p_val = 1.0
-                
-            # Log2 Fold Change
-            # Use small pseudocount to prevent div by zero
-            log2fc = np.log2((mut_mean + 0.01) / (wt_mean + 0.01))
+            gene_item["pvalue"] = round(float(p_val), 6)
+            gene_item["wt_reps"] = [round(v, 2) for v in wt_vals]
+            gene_item["mut_reps"] = [round(v, 2) for v in mut_vals]
             
-            genes_list.append({
-                "locus_tag": locus,
-                "gene_symbol": symbol,
-                "description": desc,
-                "biotype": biotype,
-                "wt_val": round(wt_mean, 2),
-                "mutant_val": round(mut_mean, 2),
-                "log2fc": round(float(log2fc), 4),
-                "pvalue": round(float(p_val), 6),
-                "mut_reps": [round(v, 2) for v in mut_vals],
-                "wt_reps": [round(v, 2) for v in wt_vals]
-            })
-            
+        genes_list.append(gene_item)
+
+    if is_replicate_mode and genes_list:
         # Calculate FDR (Benjamini-Hochberg)
-        genes_df = pd.DataFrame(genes_list)
-        if not genes_df.empty:
-            pvals = genes_df["pvalue"].values
-            n = len(pvals)
-            sorted_indices = np.argsort(pvals)
-            sorted_pvals = pvals[sorted_indices]
-            
-            fdrs = np.zeros(n)
-            prev_fdr = 1.0
-            for rank in range(n - 1, -1, -1):
-                fdr = sorted_pvals[rank] * n / (rank + 1)
-                fdr = min(fdr, prev_fdr)
-                fdrs[rank] = fdr
-                prev_fdr = fdr
-                
-            unsorted_fdrs = np.zeros(n)
-            unsorted_fdrs[sorted_indices] = fdrs
-            
-            for idx, item in enumerate(genes_list):
-                item["fdr"] = round(float(unsorted_fdrs[idx]), 6)
-                
-    else:
-        # Average mode (or simple comparison)
-        print("Average mode (No replicates) detected.")
-        # Find Mutant and WT AVG expression columns
-        mut_avg_col = None
-        wt_avg_col = None
+        pvals = np.array([g["pvalue"] for g in genes_list])
+        n_genes = len(pvals)
+        sorted_indices = np.argsort(pvals)
+        sorted_pvals = pvals[sorted_indices]
         
-        # Look for explicit AVG column
-        for col in df.columns:
-            if "mutant" in col.lower() and ("avg" in col.lower() or "count" in col.lower() or "tpm" in col.lower() or "fpkm" in col.lower()):
-                mut_avg_col = col
-            if "wt" in col.lower() and ("avg" in col.lower() or "count" in col.lower() or "tpm" in col.lower() or "fpkm" in col.lower()):
-                wt_avg_col = col
-                
-        # Prefer TPM/FPKM if multiple matches
-        for col in df.columns:
-            if "mutant" in col.lower() and "tpm" in col.lower():
-                mut_avg_col = col
-            if "wt" in col.lower() and "tpm" in col.lower():
-                wt_avg_col = col
-                
-        if not mut_avg_col or not wt_avg_col:
-            # Fallback to any Mutant and WT columns
-            for col in df.columns:
-                if "mutant" in col.lower():
-                    mut_avg_col = col
-                if "wt" in col.lower():
-                    wt_avg_col = col
-                    
-        if not mut_avg_col or not wt_avg_col:
-            raise HTTPException(status_code=400, detail="Mutant 및 WT 발현량 데이터를 나타내는 열을 감지할 수 없습니다.")
+        fdrs = np.zeros(n_genes)
+        prev_fdr = 1.0
+        for rank in range(n_genes - 1, -1, -1):
+            fdr = sorted_pvals[rank] * n_genes / (rank + 1)
+            fdr = min(fdr, prev_fdr)
+            fdrs[rank] = fdr
+            prev_fdr = fdr
             
-        print(f"Using average columns: Mutant={mut_avg_col}, WT={wt_avg_col}")
+        unsorted_fdrs = np.zeros(n_genes)
+        unsorted_fdrs[sorted_indices] = fdrs
         
-        for _, row in df.iterrows():
-            locus = str(row[locus_col]).strip()
-            symbol = str(row[symbol_col]).strip() if pd.notna(row[symbol_col]) else locus
-            desc = str(row["Description"]) if "Description" in df.columns and pd.notna(row["Description"]) else ""
-            biotype = str(row["gene_biotype"]) if "gene_biotype" in df.columns and pd.notna(row["gene_biotype"]) else "protein_coding"
+        for idx, item in enumerate(genes_list):
+            item["fdr"] = round(float(unsorted_fdrs[idx]), 6)
             
-            mut_val = float(row[mut_avg_col]) if pd.notna(row[mut_avg_col]) else 0.0
-            wt_val = float(row[wt_avg_col]) if pd.notna(row[wt_avg_col]) else 0.0
-            
-            # Log2 Fold Change
-            log2fc = np.log2((mut_val + 0.01) / (wt_val + 0.01))
-            
-            genes_list.append({
-                "locus_tag": locus,
-                "gene_symbol": symbol,
-                "description": desc,
-                "biotype": biotype,
-                "wt_val": round(wt_val, 2),
-                "mutant_val": round(mut_val, 2),
-                "log2fc": round(float(log2fc), 4),
-                "pvalue": None,
-                "fdr": None
-            })
-            
-    # Save the parsed data to data_cache
+    # Save parsed data to cache
     with open(PARSED_DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(genes_list, f, indent=2, ensure_ascii=False)
         
@@ -328,8 +351,63 @@ def upload_file(file: UploadFile = File(...)):
         "success": True,
         "is_replicate_mode": is_replicate_mode,
         "genes_count": len(genes_list),
-        "genes": genes_list[:100] # Return first 100 for quick view
+        "genes": genes_list[:100]
     }
+
+@app.post("/api/upload")
+def upload_file(file: UploadFile = File(...)):
+    """Upload Excel/CSV and calculate DEG statistics using automatic column mapping."""
+    temp_path = os.path.join(CACHE_DIR, file.filename)
+    try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        if file.filename.endswith(".xlsx"):
+            df = pd.read_excel(temp_path, engine="openpyxl")
+        elif file.filename.endswith(".xls"):
+            df = pd.read_excel(temp_path, engine="xlrd")
+        else:
+            df = pd.read_csv(temp_path)
+            
+        os.remove(temp_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"파일을 읽는 도중 오류가 발생했습니다: {str(e)}")
+        
+    return parse_rnaseq_dataframe(df)
+
+@app.post("/api/upload_text")
+def upload_text(payload: dict):
+    """Parse pasted raw text and calculate DEG statistics."""
+    import io
+    text_data = payload.get("text", "").strip()
+    if not text_data:
+        raise HTTPException(status_code=400, detail="입력된 텍스트 데이터가 비어있습니다.")
+        
+    try:
+        f = io.StringIO(text_data)
+        first_line = f.readline()
+        f.seek(0)
+        
+        # Automatically detect separator
+        sep = None
+        if "\t" in first_line:
+            sep = "\t"
+        elif "," in first_line:
+            sep = ","
+        elif ";" in first_line:
+            sep = ";"
+        # If no common delimiter is found, default to whitespace separation (engine='python' sep=r'\s+')
+        if not sep:
+            df = pd.read_csv(f, sep=r'\s+', engine='python')
+        else:
+            df = pd.read_csv(f, sep=sep, engine='python')
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"텍스트 파싱에 실패했습니다. 올바른 표 형식인지 확인하세요: {str(e)}")
+        
+    if df.empty:
+        raise HTTPException(status_code=400, detail="텍스트에서 유효한 테이블 행을 발견하지 못했습니다.")
+        
+    return parse_rnaseq_dataframe(df)
 
 @app.get("/api/genes")
 def get_all_genes():
