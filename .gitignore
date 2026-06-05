@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Local cache & data
+data_cache/
+*.xlsx
+# We can exclude mock files but maybe keep the code to generate them
+mock_yeast_rnaseq.xlsx
+
+# OS files
+.DS_Store
+Thumbs.db

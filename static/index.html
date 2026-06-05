@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yeast (S. cerevisiae) RNA-seq Analyzer</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Plotly.js for charts -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar collapsed" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-helix logo-icon"></i>
+                    <span class="logo-text">YeastRNA</span>
+                </div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="#" class="menu-item active" data-tab="upload-tab">
+                    <i class="fa-solid fa-upload"></i>
+                    <span class="menu-text">데이터 업로드</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-deg" data-tab="deg-tab">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span class="menu-text">DEG 분석</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-volcano" data-tab="volcano-tab">
+                    <i class="fa-solid fa-chart-scatter"></i>
+                    <span class="menu-text">Volcano Plot</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-heatmap" data-tab="heatmap-tab">
+                    <i class="fa-solid fa-border-all"></i>
+                    <span class="menu-text">Heatmap</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-kegg" data-tab="kegg-tab">
+                    <i class="fa-solid fa-diagram-project"></i>
+                    <span class="menu-text">KEGG Pathway</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-go" data-tab="go-tab">
+                    <i class="fa-solid fa-tags"></i>
+                    <span class="menu-text">GO Enrichment</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p class="version">v1.0.0</p>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div class="header-left">
+                    <h1 id="page-title">S. cerevisiae RNA-seq Analyzer</h1>
+                    <p class="header-subtitle">효모 raw expression 데이터 기반 DEG 시각화 및 기능성 맵핑 분석 도구</p>
+                </div>
+                <div class="header-right">
+                    <div class="status-indicator" id="status-badge">
+                        <span class="status-dot"></span>
+                        <span class="status-text">대기 중</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Tabs -->
+            <div class="tab-content-container">
+                
+                <!-- Tab 1: Upload and Sample Info -->
+                <section class="tab-pane active" id="upload-tab">
+                    <div class="grid-layout">
+                        <!-- Upload Card -->
+                        <div class="card glass-card upload-section">
+                            <div class="card-header">
+                                <h3 class="card-title"><i class="fa-solid fa-file-excel icon-margin"></i>RNA-seq 데이터 파일 업로드</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="dropzone" id="dropzone">
+                                    <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display: none;">
+                                    <i class="fa-solid fa-cloud-arrow-up upload-big-icon"></i>
+                                    <p class="dropzone-text">Excel (.xlsx, .xls) 또는 CSV 파일을 여기로 드래그하거나 클릭하여 선택하세요.</p>
+                                    <p class="dropzone-hint">locus_tag(예: YAL038W), Gene_Symbol, 발현량(TPM/FPKM/Read count) 열을 포함해야 합니다.</p>
+                                </div>
+                                <div class="file-info-box" id="file-info" style="display: none;">
+                                    <div class="file-icon-name">
+                                        <i class="fa-regular fa-file-excel file-excel-icon"></i>
+                                        <span id="selected-file-name">filename.xlsx</span>
+                                    </div>
+                                    <button class="btn btn-primary" id="analyze-btn">분석 시작하기</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Data Format Guide Card -->
+                        <div class="card glass-card guide-section">
+                            <div class="card-header">
+                                <h3 class="card-title"><i class="fa-solid fa-circle-info icon-margin"></i>데이터 권장 양식 가이드</h3>
+                            </div>
+                            <div class="card-body">
+                                <p class="guide-text">본 툴은 다음과 같은 열 구성을 가진 엑셀 또는 CSV 파일을 분석할 수 있습니다.</p>
+                                <div class="table-responsive">
+                                    <table class="guide-table">
+                                        <thead>
+                                            <tr>
+                                                <th>권장 열 이름</th>
+                                                <th>설명</th>
+                                                <th>예시 데이터</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td><code>locus_tag</code> <span class="badge badge-required">필수</span></td>
+                                                <td>Yeast 체계명 (ORF)</td>
+                                                <td><code>YAL038W</code>, <code>YGR192C</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>Gene_Symbol</code></td>
+                                                <td>유전자 이름 (약어)</td>
+                                                <td><code>CDC19</code>, <code>TDH3</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>Mutant_TPM AVG</code></td>
+                                                <td>Mutant 평균 TPM (또는 FPKM, Count)</td>
+                                                <td><code>233690.32</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>WT_TPM AVG</code></td>
+                                                <td>WT 평균 TPM (또는 FPKM, Count)</td>
+                                                <td><code>51864.82</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><code>Mutant_TPM_1, 2, 3</code></td>
+                                                <td><span class="badge badge-optional">선택</span> 반복구 데이터 (통계 검정용)</td>
+                                                <td><code>234500.12</code></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="alert-box">
+                                    <i class="fa-solid fa-triangle-exclamation alert-icon"></i>
+                                    <p class="alert-text"><strong>통계 분석 알림:</strong> 개별 반복구 열(예: Mutant_TPM_1, WT_TPM_1 등)이 2개 이상 감지되면 자동으로 <strong>Welch's t-test</strong> 및 <strong>FDR 보정</strong>을 수행하여 Volcano Plot을 렌더링합니다. 평균값(AVG) 열만 제공되면 p-value가 계산되지 않으며 MA Plot이 대안으로 활성화됩니다.</p>
+                                </div>
+                                <button class="btn btn-secondary btn-full" id="load-mock-btn">샘플 Mock 데이터 로드하여 둘러보기</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 2: DEG Analysis Table -->
+                <section class="tab-pane" id="deg-tab">
+                    <div class="card glass-card">
+                        <div class="card-header flex-header">
+                            <h3 class="card-title">DEG (Differentially Expressed Genes) 분석 결과</h3>
+                            <div class="filter-controls">
+                                <div class="control-group">
+                                    <label for="log2fc-thresh">|Log2 FC| 임계값:</label>
+                                    <input type="number" id="log2fc-thresh" value="1.0" step="0.1" min="0" class="input-number">
+                                </div>
+                                <div class="control-group" id="pvalue-filter-group">
+                                    <label for="pvalue-thresh">FDR 임계값:</label>
+                                    <input type="number" id="pvalue-thresh" value="0.05" step="0.01" min="0" max="1" class="input-number">
+                                </div>
+                                <div class="control-group">
+                                    <input type="text" id="search-gene" placeholder="유전자 검색 (Symbol/ORF)..." class="input-text">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- Statistics Summary Badges -->
+                            <div class="deg-stats-bar">
+                                <div class="stat-badge up-badge">
+                                    <span class="stat-label">발현 증가 (Upregulated)</span>
+                                    <span class="stat-val" id="stat-up-count">0</span>
+                                </div>
+                                <div class="stat-badge down-badge">
+                                    <span class="stat-label">발현 감소 (Downregulated)</span>
+                                    <span class="stat-val" id="stat-down-count">0</span>
+                                </div>
+                                <div class="stat-badge total-badge">
+                                    <span class="stat-label">전체 분석 유전자</span>
+                                    <span class="stat-val" id="stat-total-count">0</span>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive max-height-table">
+                                <table class="data-table" id="deg-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Locus Tag</th>
+                                            <th>Symbol</th>
+                                            <th>WT 발현 (평균)</th>
+                                            <th>Mutant 발현 (평균)</th>
+                                            <th>Log2 Fold Change</th>
+                                            <th class="stat-header">p-value</th>
+                                            <th class="stat-header">FDR</th>
+                                            <th>분류</th>
+                                            <th>Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="deg-table-body">
+                                        <!-- Will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 3: Volcano / MA Plot -->
+                <section class="tab-pane" id="volcano-tab">
+                    <div class="split-layout">
+                        <!-- Plot View -->
+                        <div class="card glass-card flex-2">
+                            <div class="card-header flex-header">
+                                <h3 class="card-title" id="plot-title-text">Volcano Plot</h3>
+                                <div class="btn-group" id="plot-toggle-btns" style="display: none;">
+                                    <button class="btn btn-toggle active" id="btn-show-volcano">Volcano</button>
+                                    <button class="btn btn-toggle" id="btn-show-ma">MA Plot</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="plotly-chart" class="chart-container"></div>
+                            </div>
+                        </div>
+
+                        <!-- Gene Detail Panel -->
+                        <div class="card glass-card flex-1">
+                            <div class="card-header">
+                                <h3 class="card-title"><i class="fa-solid fa-magnifying-glass icon-margin"></i>선택된 유전자 상세 발현량</h3>
+                            </div>
+                            <div class="card-body" id="gene-detail-body">
+                                <div class="no-gene-selected">
+                                    <i class="fa-solid fa-mouse-pointer click-icon"></i>
+                                    <p>Plot의 유전자 점을 클릭하거나 테이블에서 유전자를 선택하면 상세 정보 및 발현 분포가 여기에 표시됩니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 4: Heatmap -->
+                <section class="tab-pane" id="heatmap-tab">
+                    <div class="grid-layout-heatmap">
+                        <div class="card glass-card heatmap-controls-card">
+                            <div class="card-header">
+                                <h3 class="card-title"><i class="fa-solid fa-sliders icon-margin"></i>Heatmap 설정</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="control-field">
+                                    <label for="heatmap-count">시각화 유전자 수:</label>
+                                    <select id="heatmap-count" class="input-select">
+                                        <option value="20">상위 20개 (발현 차이 극대화)</option>
+                                        <option value="50" selected>상위 50개 (권장)</option>
+                                        <option value="100">상위 100개</option>
+                                    </select>
+                                </div>
+                                <div class="control-field">
+                                    <label for="heatmap-metric">선별 기준:</label>
+                                    <select id="heatmap-metric" class="input-select">
+                                        <option value="log2fc">절대값 Log2 Fold Change 순</option>
+                                        <option value="pvalue" id="heatmap-metric-pvalue">p-value(FDR) 가장 낮은 순</option>
+                                    </select>
+                                </div>
+                                <div class="control-field">
+                                    <label for="heatmap-cluster">계층적 클러스터링 적용:</label>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" id="heatmap-cluster" checked>
+                                        <label for="heatmap-cluster"></label>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary btn-full mt-10" id="regenerate-heatmap">열지도 재생성</button>
+                            </div>
+                        </div>
+
+                        <div class="card glass-card heatmap-chart-card">
+                            <div class="card-header">
+                                <h3 class="card-title">Top DEG Expression Heatmap</h3>
+                            </div>
+                            <div class="card-body heatmap-container">
+                                <div id="plotly-heatmap" class="chart-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 5: KEGG Pathway Mapper -->
+                <section class="tab-pane" id="kegg-tab">
+                    <div class="split-layout-kegg">
+                        <!-- Pathway List Panel -->
+                        <div class="card glass-card flex-1 list-panel">
+                            <div class="card-header">
+                                <h3 class="card-title"><i class="fa-solid fa-list icon-margin"></i>KEGG Pathway 목록</h3>
+                            </div>
+                            <div class="card-body no-padding max-height-list">
+                                <ul class="kegg-list" id="kegg-pathway-list">
+                                    <!-- Populated dynamically -->
+                                    <li class="loading-item">경로 데이터를 불러오고 있습니다...</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Pathway Map View -->
+                        <div class="card glass-card flex-2 map-panel">
+                            <div class="card-header flex-header">
+                                <h3 class="card-title" id="kegg-map-title">KEGG Pathway Map</h3>
+                                <div class="kegg-legend">
+                                    <span class="legend-item"><span class="legend-box up-box"></span> 발현 증가 (Mutant Up)</span>
+                                    <span class="legend-item"><span class="legend-box down-box"></span> 발현 감소 (Mutant Down)</span>
+                                    <span class="legend-item"><span class="legend-box no-box"></span> 변화 없음 / 미매칭</span>
+                                </div>
+                            </div>
+                            <div class="card-body map-body-container" id="kegg-map-container">
+                                <div class="no-pathway-selected">
+                                    <i class="fa-solid fa-diagram-project map-big-icon"></i>
+                                    <p>왼쪽 목록에서 보고 싶은 KEGG Pathway를 선택하세요.</p>
+                                    <p class="sub-hint">유전자의 발현 변화량($\log_2\text{FC}$)에 따라 실시간으로 노드 색상이 맵핑되어 표시됩니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 6: GO Enrichment -->
+                <section class="tab-pane" id="go-tab">
+                    <div class="card glass-card">
+                        <div class="card-header flex-header">
+                            <h3 class="card-title">Gene Ontology Enrichment (유전자 온톨로지 농축 분석)</h3>
+                            <div class="go-controls">
+                                <label for="go-direction">분석 대상 유전자군:</label>
+                                <select id="go-direction" class="input-select inline-select">
+                                    <option value="up">발현 증가 유전자 (Upregulated DEGs)</option>
+                                    <option value="down">발현 감소 유전자 (Downregulated DEGs)</option>
+                                </select>
+                                <button class="btn btn-primary" id="run-go-btn">Enrichment 분석 실행</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert-box mb-20">
+                                <i class="fa-solid fa-info alert-icon"></i>
+                                <p class="alert-text">선택한 유전자군에 대해 <strong>SGD Yeast GO Slim</strong> 데이터셋을 기반으로 Hypergeometric test(초기하 분포 통계 검정)를 수행하여 통계적으로 유의미한 기능 범주를 도출합니다.</p>
+                            </div>
+                            
+                            <div class="table-responsive max-height-table">
+                                <table class="data-table" id="go-table">
+                                    <thead>
+                                        <tr>
+                                            <th>GO Term ID</th>
+                                            <th>카테고리 (Aspect)</th>
+                                            <th>기능 명칭 (GO Term Name)</th>
+                                            <th class="stat-header">매칭 유전자 수 (k)</th>
+                                            <th class="stat-header">해당 범주 전체 유전자 수 (M)</th>
+                                            <th class="stat-header">p-value</th>
+                                            <th class="stat-header">FDR (BH)</th>
+                                            <th>매칭된 유전자 목록</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="go-table-body">
+                                        <tr>
+                                            <td colspan="8" class="text-center text-muted">분석 실행 버튼을 누르시면 분석 결과가 여기에 표시됩니다.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Details Modal/Popup for Gene (Optional but neat) -->
+    <div id="gene-modal" class="modal" style="display: none;">
+        <div class="modal-content glass-card">
+            <span class="close-btn" id="close-modal">&times;</span>
+            <h2 id="modal-gene-title">Gene Name</h2>
+            <p id="modal-gene-desc" class="modal-subtitle">Gene Description</p>
+            <div id="modal-chart" class="modal-chart"></div>
+        </div>
+    </div>
+
+    <!-- Application JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>
