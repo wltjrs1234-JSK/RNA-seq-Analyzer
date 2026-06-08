@@ -114,24 +114,30 @@
                                             <i class="fa-solid fa-circle-info icon-margin"></i> 아래 그리드의 셀을 더블클릭하여 직접 편집하거나, Excel/CSV 데이터를 복사(Ctrl+C)하여 통째로 붙여넣기(Ctrl+V) 하세요.
                                         </p>
                                         
-                                        <div class="grid-actions" style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
-                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-add-row" style="padding: 6px 12px; font-size: 12px;">
-                                                <i class="fa-solid fa-plus icon-margin"></i>행 추가
+                                        <div class="grid-actions" style="margin-bottom: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                                            <div style="display: flex; align-items: center; gap: 4px;">
+                                                <input type="number" id="grid-add-row-count" value="1" min="1" max="100" class="form-control" style="width: 50px; height: 28px; padding: 2px 5px; font-size: 12px; text-align: center; border-color: #cbd5e1; border-radius: 4px; background: #ffffff; color: #334155;" title="추가할 행 개수">
+                                                <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-add-row" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                                    <i class="fa-solid fa-plus"></i>행 추가
+                                                </button>
+                                            </div>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-del-row" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                                <i class="fa-solid fa-minus"></i>선택행 삭제
                                             </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-del-row" style="padding: 6px 12px; font-size: 12px;">
-                                                <i class="fa-solid fa-minus icon-margin"></i>선택행 삭제
+                                            <div style="display: flex; align-items: center; gap: 4px;">
+                                                <input type="number" id="grid-add-col-count" value="1" min="1" max="20" class="form-control" style="width: 50px; height: 28px; padding: 2px 5px; font-size: 12px; text-align: center; border-color: #cbd5e1; border-radius: 4px; background: #ffffff; color: #334155;" title="추가할 열 개수">
+                                                <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-add-col" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                                    <i class="fa-solid fa-circle-plus"></i>열 추가
+                                                </button>
+                                            </div>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-del-col" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                                <i class="fa-solid fa-circle-minus"></i>선택열 삭제
                                             </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-add-col" style="padding: 6px 12px; font-size: 12px;">
-                                                <i class="fa-solid fa-circle-plus icon-margin"></i>열 추가
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-clear" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                                <i class="fa-solid fa-trash-can"></i>전체 삭제
                                             </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-del-col" style="padding: 6px 12px; font-size: 12px;">
-                                                <i class="fa-solid fa-circle-minus icon-margin"></i>선택열 삭제
-                                            </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-clear" style="padding: 6px 12px; font-size: 12px;">
-                                                <i class="fa-solid fa-trash-can icon-margin"></i>전체 삭제
-                                            </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-sample" style="padding: 6px 12px; font-size: 12px;">
-                                                <i class="fa-solid fa-table icon-margin"></i>예제 데이터 로드
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-sample" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                                <i class="fa-solid fa-table"></i>예제 데이터 로드
                                             </button>
                                         </div>
 

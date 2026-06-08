@@ -224,16 +224,19 @@ function fallbackAddCol() {
 
 // Automatically predict next column name (e.g. WT_Rep4) and insert new column
 function addNewColumnAutomatically() {
+    const addCount = parseInt(document.getElementById("grid-add-col-count").value, 10) || 1;
     let newColName = "New_Col";
     
     if (isFallbackGrid) {
-        fallbackAddCol();
-        const table = document.getElementById("fallback-html-table");
-        if (table && table.rows[0]) {
-            const currentCols = table.rows[0].cells.length;
-            newColName = "Col_" + currentCols;
-            const lastCell = table.rows[0].cells[currentCols - 1];
-            lastCell.textContent = newColName;
+        for (let c = 0; c < addCount; c++) {
+            fallbackAddCol();
+            const table = document.getElementById("fallback-html-table");
+            if (table && table.rows[0]) {
+                const currentCols = table.rows[0].cells.length;
+                newColName = "Col_" + currentCols;
+                const lastCell = table.rows[0].cells[currentCols - 1];
+                lastCell.textContent = newColName;
+            }
         }
     } else if (hotInstance) {
         try {
@@ -246,32 +249,34 @@ function addNewColumnAutomatically() {
                 colIdx = Math.max(selected[0][1], selected[0][3]);
             }
             
-            // Auto-detect maximum replicate number for smart naming (WT_Rep1, 2, 3 -> WT_Rep4)
-            const firstRow = gridData[0];
-            let wtMax = 3;
-            if (firstRow && firstRow.length > 0) {
-                firstRow.forEach(val => {
-                    if (val && String(val).startsWith("WT_Rep")) {
-                        const num = parseInt(String(val).replace("WT_Rep", ""), 10);
-                        if (!isNaN(num) && num > wtMax) wtMax = num;
+            // Loop for inserting specified number of columns
+            for (let c = 0; c < addCount; c++) {
+                const currentGridData = hotInstance.getData();
+                const firstRow = currentGridData[0];
+                let wtMax = 3;
+                if (firstRow && firstRow.length > 0) {
+                    firstRow.forEach(val => {
+                        if (val && String(val).startsWith("WT_Rep")) {
+                            const num = parseInt(String(val).replace("WT_Rep", ""), 10);
+                            if (!isNaN(num) && num > wtMax) wtMax = num;
+                        }
+                    });
+                }
+                const genColName = "WT_Rep" + (wtMax + 1);
+                
+                // Splice new elements into grid row arrays
+                currentGridData.forEach((row, index) => {
+                    if (index === 0) {
+                        row.splice(colIdx + 1 + c, 0, genColName);
+                    } else {
+                        row.splice(colIdx + 1 + c, 0, "");
                     }
                 });
+                
+                hotInstance.loadData(currentGridData);
             }
-            newColName = "WT_Rep" + (wtMax + 1);
-            
-            // Safe splice insertion directly on data array
-            gridData.forEach((row, index) => {
-                if (index === 0) {
-                    row.splice(colIdx + 1, 0, newColName);
-                } else {
-                    row.splice(colIdx + 1, 0, "");
-                }
-            });
-            
-            // Reload and refresh
-            hotInstance.loadData(gridData);
         } catch (err) {
-            console.error("Failed to add column:", err);
+            console.error("Failed to add columns:", err);
             alert("열을 추가하는 도중 에러가 발생했습니다: " + err.message);
         }
     }
@@ -402,8 +407,12 @@ function initDropzone() {
     
     // Grid Control Buttons Event Listeners
     document.getElementById("btn-grid-add-row").addEventListener("click", () => {
+        const addCount = parseInt(document.getElementById("grid-add-row-count").value, 10) || 1;
+        
         if (isFallbackGrid) {
-            fallbackAddRow();
+            for (let r = 0; r < addCount; r++) {
+                fallbackAddRow();
+            }
         } else if (hotInstance) {
             try {
                 const gridData = hotInstance.getData();
@@ -416,12 +425,16 @@ function initDropzone() {
                 }
                 
                 const colCount = gridData[0] ? gridData[0].length : 8;
-                const newRow = Array(colCount).fill("");
                 
-                gridData.splice(rowIdx + 1, 0, newRow);
+                // Splice empty rows based on specified addCount
+                for (let r = 0; r < addCount; r++) {
+                    const newRow = Array(colCount).fill("");
+                    gridData.splice(rowIdx + 1 + r, 0, newRow);
+                }
+                
                 hotInstance.loadData(gridData);
             } catch (err) {
-                console.error("Failed to add row:", err);
+                console.error("Failed to add rows:", err);
             }
         }
     });
