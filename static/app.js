@@ -84,7 +84,214 @@ function enableAnalysisTabs() {
 // ----------------------------------------------------------------------
 // 2. File Upload & Mock Data
 // ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// 2. File Upload & Mock Data
+// ----------------------------------------------------------------------
 let hotInstance = null;
+let isFallbackGrid = false;
+
+// Default Excel Grid sample data
+const defaultGridData = [
+    ["locus_tag", "Gene_Symbol", "WT_Rep1", "WT_Rep2", "WT_Rep3", "Mutant_Rep1", "Mutant_Rep2", "Mutant_Rep3"],
+    ["YAL038W", "CDC19", "1200.5", "1150.2", "1250.8", "340.2", "320.5", "310.8"],
+    ["YGR192C", "TDH3", "2400.1", "2450.4", "2390.9", "4500.8", "4600.2", "4450.5"],
+    ["YFL039C", "ACT1", "850.3", "900.2", "870.5", "890.1", "860.4", "880.2"],
+    ["YLR355C", "ILD1", "10.2", "12.5", "9.8", "120.5", "115.8", "130.2"],
+    ["YDL215C", "GDH2", "50.5", "45.2", "55.8", "5.1", "4.8", "5.5"],
+    ["YJR009C", "LUT2", "150.2", "160.5", "140.8", "850.3", "900.2", "870.5"],
+    ["YKL060C", "FBA1", "300.5", "310.2", "290.8", "120.2", "130.5", "110.8"],
+    ["YOL086C", "ADH1", "5000.5", "5100.2", "4900.8", "1500.2", "1600.5", "1400.8"]
+];
+
+// Fallback HTML table grid generator (for offline or loading failures)
+function initFallbackGrid(gridEl) {
+    isFallbackGrid = true;
+    gridEl.innerHTML = "";
+    gridEl.style.overflow = "auto";
+    gridEl.style.height = "320px";
+    
+    const table = document.createElement("table");
+    table.id = "fallback-html-table";
+    table.className = "fallback-excel-table";
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+    
+    gridEl.appendChild(table);
+    
+    // Load default data
+    loadFallbackData(defaultGridData);
+    
+    // Add paste event listener for Excel copy-paste compatibility
+    table.addEventListener("paste", function(e) {
+        e.preventDefault();
+        const clipboardData = e.clipboardData || window.clipboardData;
+        const pastedData = clipboardData.getData("Text");
+        
+        const rows = pastedData.split(/\r?\n/).map(row => row.split("\t"));
+        if (rows.length === 0 || rows[0].length === 0) return;
+        
+        const activeCell = document.activeElement;
+        if (!activeCell || activeCell.tagName !== "TD") return;
+        
+        const startRowIdx = activeCell.parentElement.rowIndex;
+        const startColIdx = activeCell.cellIndex;
+        
+        const trs = table.rows;
+        rows.forEach((rowData, rOffset) => {
+            const targetRowIdx = startRowIdx + rOffset;
+            
+            while (targetRowIdx >= trs.length) {
+                fallbackAddRow();
+            }
+            
+            const tr = trs[targetRowIdx];
+            rowData.forEach((val, cOffset) => {
+                const targetColIdx = startColIdx + cOffset;
+                
+                while (targetColIdx >= tr.cells.length) {
+                    fallbackAddCol();
+                }
+                
+                tr.cells[targetColIdx].textContent = val;
+            });
+        });
+    });
+}
+
+function loadFallbackData(dataArray) {
+    const table = document.getElementById("fallback-html-table");
+    if (!table) return;
+    table.innerHTML = "";
+    
+    dataArray.forEach((rowData) => {
+        const tr = document.createElement("tr");
+        rowData.forEach((val) => {
+            const td = document.createElement("td");
+            td.contentEditable = "true";
+            td.textContent = val;
+            td.style.border = "1px solid #cbd5e1";
+            td.style.padding = "6px 8px";
+            td.style.minWidth = "80px";
+            tr.appendChild(td);
+        });
+        table.appendChild(tr);
+    });
+    
+    const currentRows = dataArray.length;
+    const colCount = dataArray[0] ? dataArray[0].length : 8;
+    for (let i = 0; i < (35 - currentRows); i++) {
+        const tr = document.createElement("tr");
+        for (let j = 0; j < colCount; j++) {
+            const td = document.createElement("td");
+            td.contentEditable = "true";
+            td.style.border = "1px solid #cbd5e1";
+            td.style.padding = "6px 8px";
+            td.style.minWidth = "80px";
+            tr.appendChild(td);
+        }
+        table.appendChild(tr);
+    }
+}
+
+function fallbackAddRow() {
+    const table = document.getElementById("fallback-html-table");
+    if (!table) return;
+    const colCount = table.rows[0] ? table.rows[0].cells.length : 8;
+    const tr = document.createElement("tr");
+    for (let i = 0; i < colCount; i++) {
+        const td = document.createElement("td");
+        td.contentEditable = "true";
+        td.style.border = "1px solid #cbd5e1";
+        td.style.padding = "6px 8px";
+        td.style.minWidth = "80px";
+        tr.appendChild(td);
+    }
+    table.appendChild(tr);
+}
+
+function fallbackAddCol() {
+    const table = document.getElementById("fallback-html-table");
+    if (!table) return;
+    for (let i = 0; i < table.rows.length; i++) {
+        const td = document.createElement("td");
+        td.contentEditable = "true";
+        td.style.border = "1px solid #cbd5e1";
+        td.style.padding = "6px 8px";
+        td.style.minWidth = "80px";
+        table.rows[i].appendChild(td);
+    }
+}
+
+// Custom prompt helper to allow custom column names on addition
+function askForColumnNameAndAdd() {
+    const name = prompt("새로운 열의 이름을 입력해 주세요 (예: WT_Rep4):", "New_Col");
+    if (name === null) return; // Cancelled
+    
+    if (isFallbackGrid) {
+        fallbackAddCol();
+        const table = document.getElementById("fallback-html-table");
+        if (table && table.rows[0]) {
+            const lastCell = table.rows[0].cells[table.rows[0].cells.length - 1];
+            lastCell.textContent = name;
+        }
+    } else if (hotInstance) {
+        hotInstance.alter("insert_col_after");
+        const colCount = hotInstance.countCols();
+        hotInstance.setDataAtCell(0, colCount - 1, name);
+    }
+}
+
+function fallbackDelRow() {
+    const table = document.getElementById("fallback-html-table");
+    if (!table) return;
+    
+    const activeCell = document.activeElement;
+    if (activeCell && activeCell.tagName === "TD") {
+        const rowIndex = activeCell.parentElement.rowIndex;
+        if (table.rows.length > 1) {
+            table.deleteRow(rowIndex);
+        }
+    } else {
+        if (table.rows.length > 1) {
+            table.deleteRow(table.rows.length - 1);
+        }
+    }
+}
+
+function fallbackDelCol() {
+    const table = document.getElementById("fallback-html-table");
+    if (!table) return;
+    
+    const activeCell = document.activeElement;
+    let colIndex = -1;
+    if (activeCell && activeCell.tagName === "TD") {
+        colIndex = activeCell.cellIndex;
+    } else {
+        colIndex = table.rows[0] ? table.rows[0].cells.length - 1 : -1;
+    }
+    
+    if (colIndex !== -1 && (table.rows[0] && table.rows[0].cells.length > 1)) {
+        for (let i = 0; i < table.rows.length; i++) {
+            table.rows[i].deleteCell(colIndex);
+        }
+    }
+}
+
+function getFallbackData() {
+    const table = document.getElementById("fallback-html-table");
+    if (!table) return [];
+    
+    const data = [];
+    for (let i = 0; i < table.rows.length; i++) {
+        const rowData = [];
+        const cells = table.rows[i].cells;
+        for (let j = 0; j < cells.length; j++) {
+            rowData.push(cells[j].textContent);
+        }
+        data.push(rowData);
+    }
+    return data;
+}
 
 function initDropzone() {
     // 1. File Upload Elements
@@ -101,38 +308,36 @@ function initDropzone() {
     const textUploadContainer = document.getElementById("text-upload-container");
     const analyzeTextBtn = document.getElementById("analyze-text-btn");
     
-    // Default Excel Grid sample data
-    const defaultData = [
-        ["locus_tag", "Gene_Symbol", "WT_Rep1", "WT_Rep2", "WT_Rep3", "Mutant_Rep1", "Mutant_Rep2", "Mutant_Rep3"],
-        ["YAL038W", "CDC19", "1200.5", "1150.2", "1250.8", "340.2", "320.5", "310.8"],
-        ["YGR192C", "TDH3", "2400.1", "2450.4", "2390.9", "4500.8", "4600.2", "4450.5"],
-        ["YFL039C", "ACT1", "850.3", "900.2", "870.5", "890.1", "860.4", "880.2"],
-        ["YLR355C", "ILD1", "10.2", "12.5", "9.8", "120.5", "115.8", "130.2"],
-        ["YDL215C", "GDH2", "50.5", "45.2", "55.8", "5.1", "4.8", "5.5"],
-        ["YJR009C", "LUT2", "150.2", "160.5", "140.8", "850.3", "900.2", "870.5"],
-        ["YKL060C", "FBA1", "300.5", "310.2", "290.8", "120.2", "130.5", "110.8"],
-        ["YOL086C", "ADH1", "5000.5", "5100.2", "4900.8", "1500.2", "1600.5", "1400.8"]
-    ];
-
-    // Add extra empty rows for spacing
-    for (let i = 0; i < 30; i++) {
-        defaultData.push(["", "", "", "", "", "", "", ""]);
-    }
-
-    // Initialize Handsontable
+    // Initialize Handsontable or fallback HTML grid
     const gridEl = document.getElementById("excel-grid");
     if (gridEl) {
-        hotInstance = new Handsontable(gridEl, {
-            data: JSON.parse(JSON.stringify(defaultData)),
-            rowHeaders: true,
-            colHeaders: true,
-            contextMenu: true,
-            minSpareRows: 1,
-            stretchH: "all",
-            width: "100%",
-            height: "320px",
-            licenseKey: "non-commercial-and-evaluation"
-        });
+        if (typeof Handsontable !== "undefined") {
+            try {
+                // Prepare default data copy
+                const sampleData = JSON.parse(JSON.stringify(defaultGridData));
+                for (let i = 0; i < 30; i++) {
+                    sampleData.push(["", "", "", "", "", "", "", ""]);
+                }
+                
+                hotInstance = new Handsontable(gridEl, {
+                    data: sampleData,
+                    rowHeaders: true,
+                    colHeaders: true,
+                    contextMenu: true,
+                    minSpareRows: 1,
+                    stretchH: "all",
+                    width: "100%",
+                    height: "320px",
+                    licenseKey: "non-commercial-and-evaluation"
+                });
+            } catch (e) {
+                console.error("Handsontable initialization failed, loading fallback grid:", e);
+                initFallbackGrid(gridEl);
+            }
+        } else {
+            console.warn("Handsontable is not defined. Loading fallback HTML grid.");
+            initFallbackGrid(gridEl);
+        }
     }
     
     // Toggle UI logic
@@ -149,8 +354,10 @@ function initDropzone() {
         textUploadContainer.style.display = "block";
         fileUploadContainer.style.display = "none";
         
-        // Recalculate dimensions for Handsontable upon exposure
-        if (hotInstance) {
+        // Render/Resize grid
+        if (isFallbackGrid) {
+            // Nothing to do
+        } else if (hotInstance) {
             setTimeout(() => {
                 hotInstance.render();
             }, 50);
@@ -159,13 +366,17 @@ function initDropzone() {
     
     // Grid Control Buttons Event Listeners
     document.getElementById("btn-grid-add-row").addEventListener("click", () => {
-        if (hotInstance) {
+        if (isFallbackGrid) {
+            fallbackAddRow();
+        } else if (hotInstance) {
             hotInstance.alter("insert_row_below");
         }
     });
 
     document.getElementById("btn-grid-del-row").addEventListener("click", () => {
-        if (hotInstance) {
+        if (isFallbackGrid) {
+            fallbackDelRow();
+        } else if (hotInstance) {
             const selected = hotInstance.getSelected();
             if (selected && selected.length > 0) {
                 const startRow = selected[0][0];
@@ -181,20 +392,49 @@ function initDropzone() {
         }
     });
 
-    document.getElementById("btn-grid-clear").addEventListener("click", () => {
-        if (hotInstance) {
-            const headerRow = ["locus_tag", "Gene_Symbol", "WT_Rep1", "WT_Rep2", "WT_Rep3", "Mutant_Rep1", "Mutant_Rep2", "Mutant_Rep3"];
-            const emptyData = [headerRow];
-            for (let i = 0; i < 30; i++) {
-                emptyData.push(["", "", "", "", "", "", "", ""]);
+    document.getElementById("btn-grid-add-col").addEventListener("click", () => {
+        askForColumnNameAndAdd();
+    });
+
+    document.getElementById("btn-grid-del-col").addEventListener("click", () => {
+        if (isFallbackGrid) {
+            fallbackDelCol();
+        } else if (hotInstance) {
+            const selected = hotInstance.getSelected();
+            if (selected && selected.length > 0) {
+                const startCol = selected[0][1];
+                const endCol = selected[0][3];
+                const count = Math.abs(endCol - startCol) + 1;
+                hotInstance.alter("remove_col", Math.min(startCol, endCol), count);
+            } else {
+                const colCount = hotInstance.countCols();
+                if (colCount > 1) {
+                    hotInstance.alter("remove_col", colCount - 1);
+                }
             }
+        }
+    });
+
+    document.getElementById("btn-grid-clear").addEventListener("click", () => {
+        const headerRow = ["locus_tag", "Gene_Symbol", "WT_Rep1", "WT_Rep2", "WT_Rep3", "Mutant_Rep1", "Mutant_Rep2", "Mutant_Rep3"];
+        const emptyData = [headerRow];
+        for (let i = 0; i < 30; i++) {
+            emptyData.push(["", "", "", "", "", "", "", ""]);
+        }
+        
+        if (isFallbackGrid) {
+            loadFallbackData(emptyData);
+        } else if (hotInstance) {
             hotInstance.loadData(emptyData);
         }
     });
 
     document.getElementById("btn-grid-sample").addEventListener("click", () => {
-        if (hotInstance) {
-            hotInstance.loadData(JSON.parse(JSON.stringify(defaultData)));
+        const sampleData = JSON.parse(JSON.stringify(defaultGridData));
+        if (isFallbackGrid) {
+            loadFallbackData(sampleData);
+        } else if (hotInstance) {
+            hotInstance.loadData(sampleData);
         }
     });
     
@@ -241,9 +481,7 @@ function initDropzone() {
     
     // Grid data submission and TSV parsing trigger
     analyzeTextBtn.addEventListener("click", () => {
-        if (!hotInstance) return;
-
-        const gridData = hotInstance.getData();
+        const gridData = isFallbackGrid ? getFallbackData() : (hotInstance ? hotInstance.getData() : []);
         const tsvRows = [];
 
         gridData.forEach((row) => {
@@ -251,7 +489,6 @@ function initDropzone() {
             if (hasContent) {
                 const cleanRow = row.map(cell => {
                     if (cell === null || cell === undefined) return "";
-                    // Remove tab or newline inside cells to prevent layout breaks
                     return String(cell).replace(/[\t\r\n]/g, " ");
                 });
                 tsvRows.push(cleanRow.join("\t"));

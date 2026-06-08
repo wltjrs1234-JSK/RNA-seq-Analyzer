@@ -1187,3 +1187,39 @@ body {
 .handsontable td.area {
     background-color: rgba(59, 130, 246, 0.08) !important;
 }
+
+/* Fallback HTML Spreadsheet Styles */
+.fallback-excel-table {
+    border-collapse: collapse;
+    width: 100%;
+    background-color: #ffffff;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    color: #334155;
+}
+
+.fallback-excel-table tr:first-child td {
+    background-color: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    text-align: center;
+    border-bottom: 2px solid #cbd5e1;
+}
+
+.fallback-excel-table td {
+    border: 1px solid #cbd5e1;
+    padding: 6px 10px;
+    min-width: 90px;
+    height: 28px;
+    outline: none;
+    transition: background-color 0.15s ease;
+}
+
+.fallback-excel-table td:focus {
+    background-color: rgba(59, 130, 246, 0.05) !important;
+    box-shadow: inset 0 0 0 2px var(--border-active);
+}
+
+.fallback-excel-table tr:hover td {
+    background-color: #f1f5f9;
+}
