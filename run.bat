@@ -54,7 +54,7 @@ echo    종료 :  이 창에서  Ctrl+C  를 누르세요.
 echo  ============================================================
 echo.
 
-start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1:8000"
+start "" cmd /c "timeout /t 3 /nobreak >nul & (start chrome http://127.0.0.1:8000 || start http://127.0.0.1:8000)"
 
 :: ── FastAPI 서버 실행 ──
 python main.py
