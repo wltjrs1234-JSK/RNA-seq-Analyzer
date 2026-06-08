@@ -7,7 +7,7 @@ import requests
 import pandas as pd
 import numpy as np
 from scipy import stats
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +15,15 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = FastAPI(title="Yeast RNA-seq Analyzer API")
+
+# Custom Middleware to bypass browser caching for static resources during development/automation
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 # Enable CORS for frontend interaction
 app.add_middleware(
