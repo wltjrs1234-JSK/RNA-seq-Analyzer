@@ -709,6 +709,39 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
+    import threading
+    import time
+    import webbrowser
+
+    def open_browser():
+        time.sleep(1.5)
+        url = "http://127.0.0.1:8000"
+        try:
+            # 1. 시스템에 등록된 Chrome 브라우저 기동 시도
+            chrome = webbrowser.get("chrome")
+            chrome.open(url)
+        except Exception:
+            try:
+                # 2. Windows 기본 Chrome 기본 설치 경로 직접 탐색
+                chrome_paths = [
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+                ]
+                opened = False
+                for path in chrome_paths:
+                    if os.path.exists(path):
+                        webbrowser.register('chrome_path', None, webbrowser.BackgroundBrowser(path))
+                        webbrowser.get('chrome_path').open(url)
+                        opened = True
+                        break
+                if not opened:
+                    webbrowser.open(url)
+            except Exception:
+                webbrowser.open(url)
+
+    # 브라우저 자동 오픈 스레드 시작
+    threading.Thread(target=open_browser, daemon=True).start()
+
     # Download data on start
     get_go_data()
     get_kegg_pathways()

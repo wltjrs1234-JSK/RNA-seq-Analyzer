@@ -25,38 +25,29 @@ if %errorlevel% neq 0 (
 )
 
 :: ── 필수 패키지 자동 설치 ──
-echo  [1/3] 필수 패키지 확인 중...
-pip show fastapi >nul 2>&1
+echo  [1/2] 필수 패키지 확인 및 자동 설치 중...
+pip install fastapi "uvicorn[standard]" pandas numpy scipy openpyxl xlrd requests urllib3 python-multipart -q
 if %errorlevel% neq 0 (
-    echo        fastapi 가 없습니다. 패키지를 설치합니다 (첫 실행 시 수 분 소요)...
-    pip install fastapi "uvicorn[standard]" pandas numpy scipy openpyxl xlrd requests urllib3 python-multipart -q
-    if %errorlevel% neq 0 (
-        echo  [오류] 패키지 설치 실패 - 인터넷 연결을 확인하세요.
-        pause
-        exit /b 1
-    )
-    echo        설치 완료!
-) else (
-    echo        패키지 OK.
+    echo  [오류] 패키지 설치 실패 - 인터넷 연결을 확인하세요.
+    pause
+    exit /b 1
 )
+echo        패키지 준비 완료.
 
 :: ── data_cache 폴더 보장 ──
-echo  [2/3] 캐시 폴더 확인 중...
+echo  [2/2] 캐시 폴더 확인 중...
 if not exist "data_cache\" mkdir data_cache
 echo        OK.
 
-:: ── 브라우저 자동 실행 (3초 후) ──
-echo  [3/3] 서버 기동 중...
+:: ── FastAPI 서버 실행 ──
 echo.
 echo  ============================================================
 echo    주소 :  http://127.0.0.1:8000
+echo    잠시 후 Chrome 브라우저로 대시보드가 자동으로 열립니다.
 echo    종료 :  이 창에서  Ctrl+C  를 누르세요.
 echo  ============================================================
 echo.
 
-start "" cmd /c "timeout /t 3 /nobreak >nul & (start chrome http://127.0.0.1:8000 || start http://127.0.0.1:8000)"
-
-:: ── FastAPI 서버 실행 ──
 python main.py
 
 echo.
