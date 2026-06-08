@@ -257,8 +257,8 @@ function addNewColumnAutomatically() {
             }
             newColName = "WT_Rep" + (wtMax + 1);
             
-            // Standard alter insert_col API with explicit amount '1'
-            hotInstance.alter("insert_col", colIdx + 1, 1);
+            // Standard alter insert_col_right API with explicit amount '1'
+            hotInstance.alter("insert_col_right", colIdx, 1);
             hotInstance.setDataAtCell(0, colIdx + 1, newColName);
         } catch (err) {
             console.error("Failed to add column via Handsontable API:", err);
@@ -400,7 +400,7 @@ function initDropzone() {
             if (selected && selected.length > 0) {
                 rowIdx = Math.max(selected[0][0], selected[0][2]);
             }
-            hotInstance.alter("insert_row", rowIdx + 1, 1);
+            hotInstance.alter("insert_row_below", rowIdx, 1);
         }
     });
 
