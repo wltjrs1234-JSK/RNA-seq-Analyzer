@@ -236,28 +236,34 @@ function addNewColumnAutomatically() {
             lastCell.textContent = newColName;
         }
     } else if (hotInstance) {
-        const selected = hotInstance.getSelected();
-        let colIdx = hotInstance.countCols() - 1;
-        if (selected && selected.length > 0) {
-            colIdx = Math.max(selected[0][1], selected[0][3]);
+        try {
+            const selected = hotInstance.getSelected();
+            let colIdx = hotInstance.countCols() - 1;
+            if (selected && selected.length > 0) {
+                colIdx = Math.max(selected[0][1], selected[0][3]);
+            }
+            
+            // Safe array retrieval from Handsontable memory
+            const gridData = hotInstance.getData();
+            const firstRow = (gridData && gridData.length > 0) ? gridData[0] : [];
+            let wtMax = 3;
+            if (firstRow && firstRow.length > 0) {
+                firstRow.forEach(val => {
+                    if (val && String(val).startsWith("WT_Rep")) {
+                        const num = parseInt(String(val).replace("WT_Rep", ""), 10);
+                        if (!isNaN(num) && num > wtMax) wtMax = num;
+                    }
+                });
+            }
+            newColName = "WT_Rep" + (wtMax + 1);
+            
+            // Standard alter insert_col API with explicit amount '1'
+            hotInstance.alter("insert_col", colIdx + 1, 1);
+            hotInstance.setDataAtCell(0, colIdx + 1, newColName);
+        } catch (err) {
+            console.error("Failed to add column via Handsontable API:", err);
+            alert("열을 추가하는 도중 에러가 발생했습니다: " + err.message);
         }
-        
-        // Auto-detect maximum replicate number for smart naming (WT_Rep1, 2, 3 -> WT_Rep4)
-        const firstRow = hotInstance.getDataAtRow(0);
-        let wtMax = 3;
-        if (firstRow && firstRow.length > 0) {
-            firstRow.forEach(val => {
-                if (val && String(val).startsWith("WT_Rep")) {
-                    const num = parseInt(String(val).replace("WT_Rep", ""), 10);
-                    if (!isNaN(num) && num > wtMax) wtMax = num;
-                }
-            });
-        }
-        newColName = "WT_Rep" + (wtMax + 1);
-        
-        // Standard alter insert_col API (places new column right next to selected/last column)
-        hotInstance.alter("insert_col", colIdx + 1);
-        hotInstance.setDataAtCell(0, colIdx + 1, newColName);
     }
 }
 
@@ -394,7 +400,7 @@ function initDropzone() {
             if (selected && selected.length > 0) {
                 rowIdx = Math.max(selected[0][0], selected[0][2]);
             }
-            hotInstance.alter("insert_row_below", rowIdx);
+            hotInstance.alter("insert_row", rowIdx + 1, 1);
         }
     });
 
