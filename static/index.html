@@ -12,6 +12,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Plotly.js for charts -->
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <!-- Handsontable for Excel-like data grid -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -107,9 +110,31 @@
                                 <!-- Text Upload Method (Hidden by default) -->
                                 <div id="text-upload-container" style="display: none;">
                                     <div class="text-upload-box">
-                                        <p class="guide-text" style="font-size: 13px; margin-bottom: 10px;">엑셀이나 메모장에서 데이터를 복사하여 아래에 붙여넣으세요. 첫 행은 열 이름(Header)을 포함해야 하며, 탭(Tab) 또는 쉼표(,), 공백으로 구분된 형식이어야 합니다.</p>
-                                        <textarea id="raw-text-input" class="input-textarea" placeholder="locus_tag&#9;WT_1&#9;WT_2&#9;WT_3&#9;Mutant_1&#9;Mutant_2&#9;Mutant_3&#10;YAL038W&#9;2340.5&#9;2590.2&#9;3010.8&#9;519.3&#9;530.1&#9;460.2&#10;YGR192C&#9;1500.1&#9;1620.4&#9;1450.9&#9;3200.8&#9;3150.2&#9;3410.5&#10;..."></textarea>
-                                        <button class="btn btn-primary btn-full" id="analyze-text-btn" style="margin-top: 15px;">붙여넣은 데이터 분석 시작</button>
+                                        <p class="guide-text" style="font-size: 13px; margin-bottom: 12px; color: #475569;">
+                                            <i class="fa-solid fa-circle-info icon-margin"></i> 아래 그리드의 셀을 더블클릭하여 직접 편집하거나, Excel/CSV 데이터를 복사(Ctrl+C)하여 통째로 붙여넣기(Ctrl+V) 하세요.
+                                        </p>
+                                        
+                                        <div class="grid-actions" style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-add-row" style="padding: 6px 12px; font-size: 12px;">
+                                                <i class="fa-solid fa-plus icon-margin"></i>행 추가
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-del-row" style="padding: 6px 12px; font-size: 12px;">
+                                                <i class="fa-solid fa-minus icon-margin"></i>선택행 삭제
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-clear" style="padding: 6px 12px; font-size: 12px;">
+                                                <i class="fa-solid fa-trash-can icon-margin"></i>전체 삭제
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-grid-sample" style="padding: 6px 12px; font-size: 12px;">
+                                                <i class="fa-solid fa-table icon-margin"></i>예제 데이터 로드
+                                            </button>
+                                        </div>
+
+                                        <!-- Handsontable Grid Div -->
+                                        <div id="excel-grid-container" class="modern-grid-wrapper" style="border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-bottom: 15px;">
+                                            <div id="excel-grid"></div>
+                                        </div>
+
+                                        <button class="btn btn-primary btn-full" id="analyze-text-btn">입력한 데이터 분석 시작</button>
                                     </div>
                                 </div>
                             </div>

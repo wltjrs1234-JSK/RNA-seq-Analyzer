@@ -84,6 +84,8 @@ function enableAnalysisTabs() {
 // ----------------------------------------------------------------------
 // 2. File Upload & Mock Data
 // ----------------------------------------------------------------------
+let hotInstance = null;
+
 function initDropzone() {
     // 1. File Upload Elements
     const dropzone = document.getElementById("dropzone");
@@ -98,7 +100,40 @@ function initDropzone() {
     const fileUploadContainer = document.getElementById("file-upload-container");
     const textUploadContainer = document.getElementById("text-upload-container");
     const analyzeTextBtn = document.getElementById("analyze-text-btn");
-    const rawTextInput = document.getElementById("raw-text-input");
+    
+    // Default Excel Grid sample data
+    const defaultData = [
+        ["locus_tag", "Gene_Symbol", "WT_Rep1", "WT_Rep2", "WT_Rep3", "Mutant_Rep1", "Mutant_Rep2", "Mutant_Rep3"],
+        ["YAL038W", "CDC19", "1200.5", "1150.2", "1250.8", "340.2", "320.5", "310.8"],
+        ["YGR192C", "TDH3", "2400.1", "2450.4", "2390.9", "4500.8", "4600.2", "4450.5"],
+        ["YFL039C", "ACT1", "850.3", "900.2", "870.5", "890.1", "860.4", "880.2"],
+        ["YLR355C", "ILD1", "10.2", "12.5", "9.8", "120.5", "115.8", "130.2"],
+        ["YDL215C", "GDH2", "50.5", "45.2", "55.8", "5.1", "4.8", "5.5"],
+        ["YJR009C", "LUT2", "150.2", "160.5", "140.8", "850.3", "900.2", "870.5"],
+        ["YKL060C", "FBA1", "300.5", "310.2", "290.8", "120.2", "130.5", "110.8"],
+        ["YOL086C", "ADH1", "5000.5", "5100.2", "4900.8", "1500.2", "1600.5", "1400.8"]
+    ];
+
+    // Add extra empty rows for spacing
+    for (let i = 0; i < 30; i++) {
+        defaultData.push(["", "", "", "", "", "", "", ""]);
+    }
+
+    // Initialize Handsontable
+    const gridEl = document.getElementById("excel-grid");
+    if (gridEl) {
+        hotInstance = new Handsontable(gridEl, {
+            data: JSON.parse(JSON.stringify(defaultData)),
+            rowHeaders: true,
+            colHeaders: true,
+            contextMenu: true,
+            minSpareRows: 1,
+            stretchH: "all",
+            width: "100%",
+            height: "320px",
+            licenseKey: "non-commercial-and-evaluation"
+        });
+    }
     
     // Toggle UI logic
     toggleFileUpload.addEventListener("click", () => {
@@ -113,6 +148,54 @@ function initDropzone() {
         toggleFileUpload.classList.remove("active");
         textUploadContainer.style.display = "block";
         fileUploadContainer.style.display = "none";
+        
+        // Recalculate dimensions for Handsontable upon exposure
+        if (hotInstance) {
+            setTimeout(() => {
+                hotInstance.render();
+            }, 50);
+        }
+    });
+    
+    // Grid Control Buttons Event Listeners
+    document.getElementById("btn-grid-add-row").addEventListener("click", () => {
+        if (hotInstance) {
+            hotInstance.alter("insert_row_below");
+        }
+    });
+
+    document.getElementById("btn-grid-del-row").addEventListener("click", () => {
+        if (hotInstance) {
+            const selected = hotInstance.getSelected();
+            if (selected && selected.length > 0) {
+                const startRow = selected[0][0];
+                const endRow = selected[0][2];
+                const count = Math.abs(endRow - startRow) + 1;
+                hotInstance.alter("remove_row", Math.min(startRow, endRow), count);
+            } else {
+                const rowCount = hotInstance.countRows();
+                if (rowCount > 1) {
+                    hotInstance.alter("remove_row", rowCount - 1);
+                }
+            }
+        }
+    });
+
+    document.getElementById("btn-grid-clear").addEventListener("click", () => {
+        if (hotInstance) {
+            const headerRow = ["locus_tag", "Gene_Symbol", "WT_Rep1", "WT_Rep2", "WT_Rep3", "Mutant_Rep1", "Mutant_Rep2", "Mutant_Rep3"];
+            const emptyData = [headerRow];
+            for (let i = 0; i < 30; i++) {
+                emptyData.push(["", "", "", "", "", "", "", ""]);
+            }
+            hotInstance.loadData(emptyData);
+        }
+    });
+
+    document.getElementById("btn-grid-sample").addEventListener("click", () => {
+        if (hotInstance) {
+            hotInstance.loadData(JSON.parse(JSON.stringify(defaultData)));
+        }
     });
     
     // Trigger input click on dropzone click
@@ -156,14 +239,32 @@ function initDropzone() {
         uploadFile(file);
     });
     
-    // Text paste analysis trigger
+    // Grid data submission and TSV parsing trigger
     analyzeTextBtn.addEventListener("click", () => {
-        const text = rawTextInput.value.trim();
-        if (!text) {
-            alert("텍스트 입력창에 복사한 RNA-seq 데이터를 붙여넣어 주세요.");
+        if (!hotInstance) return;
+
+        const gridData = hotInstance.getData();
+        const tsvRows = [];
+
+        gridData.forEach((row) => {
+            const hasContent = row.some(cell => cell !== null && String(cell).trim() !== "");
+            if (hasContent) {
+                const cleanRow = row.map(cell => {
+                    if (cell === null || cell === undefined) return "";
+                    // Remove tab or newline inside cells to prevent layout breaks
+                    return String(cell).replace(/[\t\r\n]/g, " ");
+                });
+                tsvRows.push(cleanRow.join("\t"));
+            }
+        });
+
+        if (tsvRows.length < 2) {
+            alert("그리드에 데이터를 입력해 주세요. 최소한 헤더 행과 1개 이상의 데이터 행이 필요합니다.");
             return;
         }
-        uploadText(text);
+
+        const tsvText = tsvRows.join("\n");
+        uploadText(tsvText);
     });
 }
 

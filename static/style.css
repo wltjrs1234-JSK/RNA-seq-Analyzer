@@ -1150,3 +1150,40 @@ body {
     border-color: var(--border-active);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
+
+/* Handsontable Modern Skin */
+.modern-grid-wrapper {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+    background: #ffffff;
+}
+
+.handsontable {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 13px !important;
+    color: #334155 !important;
+}
+
+.handsontable th {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    font-weight: 600 !important;
+    border-color: #cbd5e1 !important;
+    padding: 6px 4px !important;
+}
+
+.handsontable td {
+    border-color: #e2e8f0 !important;
+    padding: 6px 8px !important;
+}
+
+.handsontable tr:hover td {
+    background-color: #f1f5f9 !important;
+}
+
+.handsontable .htSelected {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+.handsontable td.area {
+    background-color: rgba(59, 130, 246, 0.08) !important;
+}
