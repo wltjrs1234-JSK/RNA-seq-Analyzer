@@ -322,7 +322,11 @@ def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
         }
         
         if is_replicate_mode:
-            t_stat, p_val = stats.ttest_ind(mut_vals, wt_vals, equal_var=False)
+            # Stabilize variance by applying Log2 transformation to expression values
+            wt_vals_log = [np.log2(v + 1.0) for v in wt_vals]
+            mut_vals_log = [np.log2(v + 1.0) for v in mut_vals]
+            
+            t_stat, p_val = stats.ttest_ind(mut_vals_log, wt_vals_log, equal_var=False)
             if np.isnan(p_val):
                 p_val = 1.0
             gene_item["pvalue"] = round(float(p_val), 6)
