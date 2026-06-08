@@ -237,15 +237,17 @@ function addNewColumnAutomatically() {
         }
     } else if (hotInstance) {
         try {
+            const gridData = hotInstance.getData();
+            if (!gridData || gridData.length === 0) return;
+            
             const selected = hotInstance.getSelected();
-            let colIdx = hotInstance.countCols() - 1;
+            let colIdx = gridData[0].length - 1;
             if (selected && selected.length > 0) {
                 colIdx = Math.max(selected[0][1], selected[0][3]);
             }
             
-            // Safe array retrieval from Handsontable memory
-            const gridData = hotInstance.getData();
-            const firstRow = (gridData && gridData.length > 0) ? gridData[0] : [];
+            // Auto-detect maximum replicate number for smart naming (WT_Rep1, 2, 3 -> WT_Rep4)
+            const firstRow = gridData[0];
             let wtMax = 3;
             if (firstRow && firstRow.length > 0) {
                 firstRow.forEach(val => {
@@ -257,11 +259,19 @@ function addNewColumnAutomatically() {
             }
             newColName = "WT_Rep" + (wtMax + 1);
             
-            // Standard alter insert_col_right API with explicit amount '1'
-            hotInstance.alter("insert_col_right", colIdx, 1);
-            hotInstance.setDataAtCell(0, colIdx + 1, newColName);
+            // Safe splice insertion directly on data array
+            gridData.forEach((row, index) => {
+                if (index === 0) {
+                    row.splice(colIdx + 1, 0, newColName);
+                } else {
+                    row.splice(colIdx + 1, 0, "");
+                }
+            });
+            
+            // Reload and refresh
+            hotInstance.loadData(gridData);
         } catch (err) {
-            console.error("Failed to add column via Handsontable API:", err);
+            console.error("Failed to add column:", err);
             alert("열을 추가하는 도중 에러가 발생했습니다: " + err.message);
         }
     }
@@ -395,12 +405,24 @@ function initDropzone() {
         if (isFallbackGrid) {
             fallbackAddRow();
         } else if (hotInstance) {
-            const selected = hotInstance.getSelected();
-            let rowIdx = hotInstance.countRows() - 1;
-            if (selected && selected.length > 0) {
-                rowIdx = Math.max(selected[0][0], selected[0][2]);
+            try {
+                const gridData = hotInstance.getData();
+                if (!gridData || gridData.length === 0) return;
+                
+                const selected = hotInstance.getSelected();
+                let rowIdx = gridData.length - 1;
+                if (selected && selected.length > 0) {
+                    rowIdx = Math.max(selected[0][0], selected[0][2]);
+                }
+                
+                const colCount = gridData[0] ? gridData[0].length : 8;
+                const newRow = Array(colCount).fill("");
+                
+                gridData.splice(rowIdx + 1, 0, newRow);
+                hotInstance.loadData(gridData);
+            } catch (err) {
+                console.error("Failed to add row:", err);
             }
-            hotInstance.alter("insert_row_below", rowIdx, 1);
         }
     });
 
@@ -408,17 +430,22 @@ function initDropzone() {
         if (isFallbackGrid) {
             fallbackDelRow();
         } else if (hotInstance) {
-            const selected = hotInstance.getSelected();
-            if (selected && selected.length > 0) {
-                const startRow = selected[0][0];
-                const endRow = selected[0][2];
-                const count = Math.abs(endRow - startRow) + 1;
-                hotInstance.alter("remove_row", Math.min(startRow, endRow), count);
-            } else {
-                const rowCount = hotInstance.countRows();
-                if (rowCount > 1) {
-                    hotInstance.alter("remove_row", rowCount - 1);
+            try {
+                const gridData = hotInstance.getData();
+                if (!gridData || gridData.length <= 1) return;
+                
+                const selected = hotInstance.getSelected();
+                if (selected && selected.length > 0) {
+                    const startRow = Math.min(selected[0][0], selected[0][2]);
+                    const endRow = Math.max(selected[0][0], selected[0][2]);
+                    const count = endRow - startRow + 1;
+                    gridData.splice(startRow, count);
+                } else {
+                    gridData.pop();
                 }
+                hotInstance.loadData(gridData);
+            } catch (err) {
+                console.error("Failed to delete row:", err);
             }
         }
     });
@@ -431,17 +458,28 @@ function initDropzone() {
         if (isFallbackGrid) {
             fallbackDelCol();
         } else if (hotInstance) {
-            const selected = hotInstance.getSelected();
-            if (selected && selected.length > 0) {
-                const startCol = selected[0][1];
-                const endCol = selected[0][3];
-                const count = Math.abs(endCol - startCol) + 1;
-                hotInstance.alter("remove_col", Math.min(startCol, endCol), count);
-            } else {
-                const colCount = hotInstance.countCols();
-                if (colCount > 1) {
-                    hotInstance.alter("remove_col", colCount - 1);
+            try {
+                const gridData = hotInstance.getData();
+                if (!gridData || gridData.length === 0) return;
+                
+                const selected = hotInstance.getSelected();
+                let colIdx = (gridData[0] ? gridData[0].length : 8) - 1;
+                let count = 1;
+                if (selected && selected.length > 0) {
+                    colIdx = Math.min(selected[0][1], selected[0][3]);
+                    const endCol = Math.max(selected[0][1], selected[0][3]);
+                    count = endCol - colIdx + 1;
                 }
+                
+                // Ensure we don't delete all columns
+                if (gridData[0].length > count) {
+                    gridData.forEach(row => {
+                        row.splice(colIdx, count);
+                    });
+                    hotInstance.loadData(gridData);
+                }
+            } catch (err) {
+                console.error("Failed to delete column:", err);
             }
         }
     });
