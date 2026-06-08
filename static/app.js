@@ -222,22 +222,42 @@ function fallbackAddCol() {
     }
 }
 
-// Custom prompt helper to allow custom column names on addition
-function askForColumnNameAndAdd() {
-    const name = prompt("새로운 열의 이름을 입력해 주세요 (예: WT_Rep4):", "New_Col");
-    if (name === null) return; // Cancelled
+// Automatically predict next column name (e.g. WT_Rep4) and insert new column
+function addNewColumnAutomatically() {
+    let newColName = "New_Col";
     
     if (isFallbackGrid) {
         fallbackAddCol();
         const table = document.getElementById("fallback-html-table");
         if (table && table.rows[0]) {
-            const lastCell = table.rows[0].cells[table.rows[0].cells.length - 1];
-            lastCell.textContent = name;
+            const currentCols = table.rows[0].cells.length;
+            newColName = "Col_" + currentCols;
+            const lastCell = table.rows[0].cells[currentCols - 1];
+            lastCell.textContent = newColName;
         }
     } else if (hotInstance) {
-        hotInstance.alter("insert_col_after");
-        const colCount = hotInstance.countCols();
-        hotInstance.setDataAtCell(0, colCount - 1, name);
+        const selected = hotInstance.getSelected();
+        let colIdx = hotInstance.countCols() - 1;
+        if (selected && selected.length > 0) {
+            colIdx = Math.max(selected[0][1], selected[0][3]);
+        }
+        
+        // Auto-detect maximum replicate number for smart naming (WT_Rep1, 2, 3 -> WT_Rep4)
+        const firstRow = hotInstance.getDataAtRow(0);
+        let wtMax = 3;
+        if (firstRow && firstRow.length > 0) {
+            firstRow.forEach(val => {
+                if (val && String(val).startsWith("WT_Rep")) {
+                    const num = parseInt(String(val).replace("WT_Rep", ""), 10);
+                    if (!isNaN(num) && num > wtMax) wtMax = num;
+                }
+            });
+        }
+        newColName = "WT_Rep" + (wtMax + 1);
+        
+        // Standard alter insert_col API (places new column right next to selected/last column)
+        hotInstance.alter("insert_col", colIdx + 1);
+        hotInstance.setDataAtCell(0, colIdx + 1, newColName);
     }
 }
 
@@ -369,7 +389,12 @@ function initDropzone() {
         if (isFallbackGrid) {
             fallbackAddRow();
         } else if (hotInstance) {
-            hotInstance.alter("insert_row_below");
+            const selected = hotInstance.getSelected();
+            let rowIdx = hotInstance.countRows() - 1;
+            if (selected && selected.length > 0) {
+                rowIdx = Math.max(selected[0][0], selected[0][2]);
+            }
+            hotInstance.alter("insert_row_below", rowIdx);
         }
     });
 
@@ -393,7 +418,7 @@ function initDropzone() {
     });
 
     document.getElementById("btn-grid-add-col").addEventListener("click", () => {
-        askForColumnNameAndAdd();
+        addNewColumnAutomatically();
     });
 
     document.getElementById("btn-grid-del-col").addEventListener("click", () => {
