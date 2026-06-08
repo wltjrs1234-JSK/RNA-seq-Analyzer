@@ -217,8 +217,12 @@
                                     <label for="log2fc-thresh">|Log2 FC| 임계값:</label>
                                     <input type="number" id="log2fc-thresh" value="1.0" step="0.1" min="0" class="input-number">
                                 </div>
-                                <div class="control-group" id="pvalue-filter-group">
-                                    <label for="pvalue-thresh">FDR 임계값:</label>
+                                <div class="control-group" id="pvalue-filter-group" style="gap: 8px;">
+                                    <select id="stat-type" class="form-select" style="height: 32px; border-radius: 4px; font-size: 12px; border-color: #cbd5e1; background: #ffffff; color: #334155; padding: 2px 6px;" title="통계 유의성 판정 기준">
+                                        <option value="fdr" selected>FDR 기준</option>
+                                        <option value="pvalue">p-value 기준</option>
+                                    </select>
+                                    <label for="pvalue-thresh" id="pvalue-thresh-label">임계값:</label>
                                     <input type="number" id="pvalue-thresh" value="0.05" step="0.01" min="0" max="1" class="input-number">
                                 </div>
                                 <div class="control-group">

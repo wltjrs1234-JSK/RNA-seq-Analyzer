@@ -728,7 +728,23 @@ function finalizeDataLoading() {
 function initControls() {
     const controls = ["log2fc-thresh", "pvalue-thresh", "search-gene"];
     controls.forEach(id => {
-        document.getElementById(id).addEventListener("input", renderDEGTable);
+        document.getElementById(id).addEventListener("input", () => {
+            renderDEGTable();
+            renderVolcanoOrMAPlot();
+        });
+    });
+    
+    // Statistical significance criteria toggle
+    document.getElementById("stat-type").addEventListener("change", () => {
+        const statType = document.getElementById("stat-type").value;
+        const label = document.getElementById("pvalue-thresh-label");
+        if (statType === "fdr") {
+            label.textContent = "임계값:";
+        } else {
+            label.textContent = "임계값:";
+        }
+        renderDEGTable();
+        renderVolcanoOrMAPlot();
     });
     
     // Heatmap controls
@@ -776,8 +792,11 @@ function renderDEGTable() {
         let classification = "Neutral";
         let classClass = "";
         
+        const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
+        const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
+        
         const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
-        const passesPVal = !gIsReplicateMode || (gene.fdr <= pvalThresh);
+        const passesPVal = !gIsReplicateMode || (statVal !== null && statVal <= pvalThresh);
         
         if (passesLog2FC && passesPVal) {
             if (gene.log2fc >= log2fcThresh) {
@@ -840,6 +859,7 @@ function renderVolcanoOrMAPlot() {
 function renderPlot(plotType) {
     const log2fcThresh = parseFloat(document.getElementById("log2fc-thresh").value) || 0;
     const pvalThresh = parseFloat(document.getElementById("pvalue-thresh").value) || 1.0;
+    const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
     
     const xData = [];
     const yData = [];
@@ -848,8 +868,10 @@ function renderPlot(plotType) {
     const customData = [];
     
     gGenes.forEach(gene => {
-        const isUp = gene.log2fc >= log2fcThresh && (!gIsReplicateMode || gene.fdr <= pvalThresh);
-        const isDown = gene.log2fc <= -log2fcThresh && (!gIsReplicateMode || gene.fdr <= pvalThresh);
+        const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
+        const passesPVal = !gIsReplicateMode || (statVal !== null && statVal <= pvalThresh);
+        const isUp = gene.log2fc >= log2fcThresh && passesPVal;
+        const isDown = gene.log2fc <= -log2fcThresh && passesPVal;
         
         let color = '#64748b'; // Neutral (Grey)
         if (isUp) color = '#ff4d4d'; // Upregulated (Red)
@@ -857,8 +879,8 @@ function renderPlot(plotType) {
         
         if (plotType === "volcano") {
             xData.push(gene.log2fc);
-            // Y-axis is -log10(FDR)
-            const yVal = gene.fdr > 0 ? -Math.log10(gene.fdr) : 0;
+            // Y-axis is -log10(FDR) or -log10(p-value)
+            const yVal = (statVal !== null && statVal > 0) ? -Math.log10(statVal) : 0;
             yData.push(yVal);
         } else {
             // MA Plot: X-axis is log2 Mean Expression, Y-axis is Log2FC
@@ -868,7 +890,8 @@ function renderPlot(plotType) {
             yData.push(gene.log2fc);
         }
         
-        textData.push(`${gene.gene_symbol} (${gene.locus_tag})<br>Log2FC: ${gene.log2fc}<br>FDR: ${gene.fdr !== null ? gene.fdr : '-'}`);
+        const statLabel = statType === "fdr" ? "FDR" : "p-value";
+        textData.push(`${gene.gene_symbol} (${gene.locus_tag})<br>Log2FC: ${gene.log2fc}<br>${statLabel}: ${statVal !== null ? statVal : '-'}`);
         colorData.push(color);
         customData.push(gene);
     });
@@ -904,7 +927,7 @@ function renderPlot(plotType) {
             zerolinecolor: '#cbd5e1'
         },
         yaxis: {
-            title: plotType === "volcano" ? '-Log10(FDR)' : 'Log2 Fold Change',
+            title: plotType === "volcano" ? (statType === "fdr" ? '-Log10(FDR)' : '-Log10(p-value)') : 'Log2 Fold Change',
             gridcolor: '#e2e8f0',
             zerolinecolor: '#cbd5e1'
         },
