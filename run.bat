@@ -68,7 +68,7 @@ echo   Press [Ctrl + C] in this window to stop the server.
 echo ============================================================
 echo.
 
-%PYTHON_CMD% main.py
+%PYTHON_CMD% "%~dp0main.py"
 if %errorlevel% neq 0 (
     echo Server process exited with code %errorlevel%.
     pause
