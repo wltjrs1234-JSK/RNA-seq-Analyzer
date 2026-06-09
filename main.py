@@ -37,9 +37,89 @@ app.add_middleware(
 CACHE_DIR = "data_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# ----------------------------------------------------------------------
-# 1. Helpers for caching GO and KEGG data
-# ----------------------------------------------------------------------
+def get_ncbi_mapping():
+    """Download and cache SGD dbxref.tab mapping file to translate NCBI Gene IDs to Yeast ORF IDs."""
+    mapping_file = os.path.join(CACHE_DIR, "ncbi_mapping.json")
+    if os.path.exists(mapping_file):
+        with open(mapping_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+            
+    print("Downloading dbxref.tab from SGD for NCBI to Systematic ID mapping...")
+    dbxref_path = os.path.join(CACHE_DIR, "dbxref.tab")
+    if not os.path.exists(dbxref_path):
+        url = "https://downloads.yeastgenome.org/curation/chromosomal_feature/dbxref.tab"
+        try:
+            r = requests.get(url, timeout=30, verify=False)
+            r.raise_for_status()
+            with open(dbxref_path, "wb") as f:
+                f.write(r.content)
+        except Exception as e:
+            print(f"Failed to download dbxref from SGD: {e}")
+            return {}
+            
+    # Parse dbxref.tab
+    mapping = {}
+    if os.path.exists(dbxref_path):
+        try:
+            with open(dbxref_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 4:
+                        source = parts[1]
+                        systematic_name = parts[3]
+                        dbxref_id = parts[0]
+                        if source == "NCBI":
+                            mapping[dbxref_id] = systematic_name
+                            
+            with open(mapping_file, "w", encoding="utf-8") as f:
+                json.dump(mapping, f, indent=2)
+            return mapping
+        except Exception as e:
+            print(f"Error parsing dbxref file: {e}")
+    return {}
+
+def get_pfam_data():
+    """Download and cache yeast Pfam domain mapping file if not present."""
+    pfam_file = os.path.join(CACHE_DIR, "yeast_pfam.json")
+    if os.path.exists(pfam_file):
+        with open(pfam_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+            
+    print("Fetching yeast protein domain mappings from SGD...")
+    dbxref_path = os.path.join(CACHE_DIR, "dbxref.tab")
+    if not os.path.exists(dbxref_path):
+        get_ncbi_mapping() # Trigger download
+        
+    pfam_map = {}
+    if os.path.exists(dbxref_path):
+        try:
+            with open(dbxref_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 6:
+                        source = parts[1]
+                        systematic_name = parts[3]
+                        ref_id = parts[0]
+                        desc = parts[4] if len(parts) > 4 else ref_id
+                        
+                        if source in ["Pfam", "InterPro"]:
+                            if systematic_name not in pfam_map:
+                                pfam_map[systematic_name] = []
+                            pfam_map[systematic_name].append({
+                                "id": ref_id,
+                                "name": desc,
+                                "source": source
+                            })
+            with open(pfam_file, "w", encoding="utf-8") as f:
+                json.dump(pfam_map, f, indent=2)
+            return pfam_map
+        except Exception as e:
+            print(f"Error parsing Pfam domains: {e}")
+    return {}
 
 def get_go_data():
     """Download and cache SGD GO Slim mapping tab file if not present."""
@@ -302,12 +382,20 @@ def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
     
     genes_list = []
     
+    # Load NCBI ID mapping table
+    ncbi_map = get_ncbi_mapping()
+    
     for _, row in df.iterrows():
         if pd.isna(row[locus_col]):
             continue
         locus = str(row[locus_col]).strip()
         if not locus:
             continue
+            
+        # Try translating numerical NCBI Gene ID to Systematic ORF ID
+        # If input locus is like "852415" (TEF2 NCBI ID), it will convert to "YAL038W"
+        if locus.isdigit() and locus in ncbi_map:
+            locus = ncbi_map[locus]
             
         symbol = str(row[symbol_col]).strip() if symbol_col in row and pd.notna(row[symbol_col]) else locus
         
@@ -734,6 +822,306 @@ def get_pathway_map(pathway_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"KEGG 연동 실패: {str(e)}")
 
+@app.get("/api/pca")
+def run_pca_analysis():
+    """Perform PCA (Principal Component Analysis) on WT and Mutant replicate expression matrix."""
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 데이터를 업로드하여 분석을 수행해 주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    # We need replicates data. PCA is only valid when replicate columns exist
+    if not genes or "wt_reps" not in genes[0] or "mut_reps" not in genes[0]:
+        raise HTTPException(status_code=400, detail="PCA 분석을 위해서는 반복구(Replicate) 데이터가 필요합니다.")
+        
+    wt_rep_len = len(genes[0]["wt_reps"])
+    mut_rep_len = len(genes[0]["mut_reps"])
+    
+    samples = []
+    for i in range(wt_rep_len):
+        samples.append(f"WT_{i+1}")
+    for i in range(mut_rep_len):
+        samples.append(f"Mutant_{i+1}")
+        
+    # Build expression matrix
+    data = []
+    for gene in genes:
+        row = gene["wt_reps"] + gene["mut_reps"]
+        data.append(row)
+        
+    X = np.array(data) # shape: (n_genes, n_samples)
+    X = X.T # shape: (n_samples, n_genes)
+    
+    # Mean centering
+    mean = np.mean(X, axis=0)
+    X_centered = X - mean
+    
+    try:
+        U, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+        eigenvalues = (S ** 2) / (X.shape[0] - 1)
+        explained_variance_ratio = eigenvalues / np.sum(eigenvalues)
+        
+        pc1 = U[:, 0] * S[0]
+        pc2 = U[:, 1] * S[1]
+        
+        pca_results = []
+        for idx, sample_name in enumerate(samples):
+            pca_results.append({
+                "sample": sample_name,
+                "group": "WT" if "WT" in sample_name else "Mutant",
+                "pc1": float(pc1[idx]),
+                "pc2": float(pc2[idx])
+            })
+            
+        return {
+            "success": True,
+            "pc1_var": float(explained_variance_ratio[0]),
+            "pc2_var": float(explained_variance_ratio[1]),
+            "results": pca_results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PCA 연산 중 오류가 발생했습니다: {str(e)}")
+
+@app.get("/api/network")
+def get_string_network(limit: int = 50, score: int = 400):
+    """Query STRING-DB for PPI network of top differentially expressed genes."""
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 데이터를 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    degs = [g for g in genes if g["locus_tag"]]
+    degs = sorted(degs, key=lambda x: abs(x["log2fc"]), reverse=True)
+    top_degs = degs[:limit]
+    
+    if not top_degs:
+        return {"nodes": [], "edges": []}
+        
+    locus_tags = [g["locus_tag"] for g in top_degs]
+    fc_map = {g["locus_tag"]: g["log2fc"] for g in top_degs}
+    symbol_map = {g["locus_tag"]: g["gene_symbol"] for g in top_degs}
+    desc_map = {g["locus_tag"]: g["description"] for g in top_degs}
+    
+    url = "https://string-db.org/api/json/network"
+    params = {
+        "identifiers": "\n".join(locus_tags),
+        "species": 4932,
+        "required_score": score,
+        "caller_identity": "yeast_rnaseq_analyzer"
+    }
+    
+    try:
+        r = requests.post(url, data=params, timeout=20, verify=False)
+        r.raise_for_status()
+        interactions = r.json()
+    except Exception as e:
+        print(f"STRING-DB API request failed: {e}")
+        return {"success": False, "detail": "STRING-DB API 호출 실패. 네트워크 연결 상태를 확인해 주세요."}
+        
+    nodes = {}
+    edges = []
+    
+    for inter in interactions:
+        p1 = inter.get("preferredName_A")
+        p2 = inter.get("preferredName_B")
+        score_val = inter.get("score")
+        
+        l1 = inter.get("stringId_A").split(".")[-1]
+        l2 = inter.get("stringId_B").split(".")[-1]
+        
+        for l, p in [(l1, p1), (l2, p2)]:
+            if l not in nodes:
+                nodes[l] = {
+                    "id": l,
+                    "label": symbol_map.get(l, p),
+                    "log2fc": fc_map.get(l, 0.0),
+                    "desc": desc_map.get(l, "")
+                }
+                
+        edges.append({
+            "source": l1,
+            "target": l2,
+            "score": score_val
+        })
+        
+    return {
+        "success": True,
+        "nodes": list(nodes.values()),
+        "edges": edges
+    }
+
+@app.get("/api/gsea_terms")
+def get_gsea_terms():
+    """Retrieve suitable GO terms for GSEA analysis with sufficient gene size."""
+    df_go = get_go_data()
+    if df_go.empty:
+        return {"terms": []}
+        
+    counts = df_go.groupby(["goid", "term_name", "aspect"]).size().reset_index(name="count")
+    filtered = counts[(counts["count"] >= 10) & (counts["count"] <= 200)]
+    
+    terms = []
+    for _, row in filtered.iterrows():
+        aspect_name = "Biological Process" if row["aspect"] == "P" else ("Molecular Function" if row["aspect"] == "F" else "Cellular Component")
+        terms.append({
+            "term_id": row["goid"],
+            "name": row["term_name"],
+            "aspect": aspect_name,
+            "count": int(row["count"])
+        })
+        
+    terms = sorted(terms, key=lambda x: x["count"], reverse=True)
+    return {"terms": terms}
+
+@app.get("/api/gsea_run/{term_id}")
+def run_gsea_analysis(term_id: str):
+    """Run GSEA-style running enrichment score calculation for a selected GO term."""
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 데이터를 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    df_go = get_go_data()
+    if df_go.empty:
+        raise HTTPException(status_code=500, detail="GO 데이터를 로드하지 못했습니다.")
+        
+    term_genes = set(df_go[df_go["goid"] == term_id]["locus_tag"])
+    ranked_genes = sorted(genes, key=lambda x: x["log2fc"], reverse=True)
+    N = len(ranked_genes)
+    
+    hits = [idx for idx, g in enumerate(ranked_genes) if g["locus_tag"] in term_genes]
+    NH = len(hits)
+    
+    if NH == 0:
+        return {"success": False, "detail": "이 GO 범주에 해당하는 업로드된 유전자가 없습니다."}
+        
+    hit_weights = [abs(ranked_genes[idx]["log2fc"]) for idx in hits]
+    sum_hit_weights = sum(hit_weights)
+    if sum_hit_weights == 0:
+        hit_weights = [1.0] * NH
+        sum_hit_weights = float(NH)
+        
+    es_profile = []
+    current_es = 0.0
+    max_es = -1.0
+    max_idx = -1
+    min_es = 1.0
+    min_idx = -1
+    
+    hit_set = set(hits)
+    
+    for i in range(N):
+        if i in hit_set:
+            hit_pos = hits.index(i)
+            current_es += hit_weights[hit_pos] / sum_hit_weights
+        else:
+            current_es -= 1.0 / (N - NH)
+            
+        if current_es > max_es:
+            max_es = current_es
+            max_idx = i
+        if current_es < min_es:
+            min_es = current_es
+            min_idx = i
+            
+        if i in hit_set or i % 10 == 0 or i == N - 1:
+            es_profile.append({
+                "rank": i,
+                "gene": ranked_genes[i]["gene_symbol"],
+                "locus": ranked_genes[i]["locus_tag"],
+                "log2fc": ranked_genes[i]["log2fc"],
+                "es": float(current_es)
+            })
+            
+    barcode_ranks = [{"rank": idx, "symbol": ranked_genes[idx]["gene_symbol"]} for idx in hits]
+    
+    return {
+        "success": True,
+        "term_id": term_id,
+        "nes": float(max_es if abs(max_es) > abs(min_es) else min_es),
+        "peak_rank": int(max_idx if abs(max_es) > abs(min_es) else min_idx),
+        "es_profile": es_profile,
+        "barcode_ranks": barcode_ranks
+    }
+
+@app.post("/api/domain_enrichment")
+def run_domain_enrichment(payload: dict):
+    """Run Protein Domain (Pfam/InterPro) enrichment on target genes using hypergeometric test."""
+    target_genes = set(payload.get("genes", []))
+    if not target_genes:
+        raise HTTPException(status_code=400, detail="유전자 목록이 비어있습니다.")
+        
+    pfam_data = get_pfam_data()
+    if not pfam_data:
+        return {"enrichment": []}
+        
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 파일을 업로드해주세요.")
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        dataset_genes = json.load(f)
+        
+    background_genes = set(g["locus_tag"] for g in dataset_genes)
+    target_genes = target_genes.intersection(background_genes)
+    if not target_genes:
+        return {"enrichment": []}
+        
+    N = len(background_genes)
+    n = len(target_genes)
+    
+    domain_to_genes = {}
+    domain_names = {}
+    
+    for locus in background_genes:
+        domains = pfam_data.get(locus, [])
+        for dom in domains:
+            dom_id = dom["id"]
+            dom_name = dom["name"]
+            domain_names[dom_id] = dom_name
+            
+            if dom_id not in domain_to_genes:
+                domain_to_genes[dom_id] = set()
+            domain_to_genes[dom_id].add(locus)
+            
+    results = []
+    for dom_id, dom_genes in domain_to_genes.items():
+        M = len(dom_genes)
+        overlap = target_genes.intersection(dom_genes)
+        k = len(overlap)
+        
+        if k < 2:
+            continue
+            
+        p_val = stats.hypergeom.sf(k - 1, N, M, n)
+        
+        results.append({
+            "domain_id": dom_id,
+            "domain_name": domain_names.get(dom_id, dom_id),
+            "k": k,
+            "M": M,
+            "pvalue": float(p_val)
+        })
+        
+    results_df = pd.DataFrame(results)
+    if not results_df.empty:
+        results_df = results_df.sort_values("pvalue")
+        pvals = results_df["pvalue"].values
+        n_terms = len(pvals)
+        fdrs = np.zeros(n_terms)
+        prev_fdr = 1.0
+        for rank in range(n_terms - 1, -1, -1):
+            fdr = pvals[rank] * n_terms / (rank + 1)
+            fdr = min(fdr, prev_fdr)
+            fdrs[rank] = fdr
+            prev_fdr = fdr
+        results_df["fdr"] = fdrs
+        
+        return {"enrichment": results_df.to_dict(orient="records")}
+        
+    return {"enrichment": []}
+
 @app.get("/mock_yeast_rnaseq.xlsx")
 def get_mock_file():
     """Serve the generated mock Excel file."""
@@ -780,6 +1168,8 @@ if __name__ == "__main__":
     threading.Thread(target=open_browser, daemon=True).start()
 
     # Download data on start
+    get_ncbi_mapping()
+    get_pfam_data()
     get_go_data()
     get_kegg_pathways()
     get_kegg_gene_mapping()

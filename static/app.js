@@ -70,12 +70,18 @@ function switchTab(tabId) {
         renderVolcanoOrMAPlot();
     } else if (tabId === 'heatmap-tab') {
         renderHeatmap();
+    } else if (tabId === 'pca-tab') {
+        renderPCAPlot();
+    } else if (tabId === 'network-tab') {
+        renderNetworkGraph();
+    } else if (tabId === 'gsea-tab') {
+        loadGSEATerms();
     }
 }
 
 // Enable tabs after successful upload
 function enableAnalysisTabs() {
-    const disabledIds = ["nav-deg", "nav-volcano", "nav-heatmap", "nav-kegg", "nav-go"];
+    const disabledIds = ["nav-deg", "nav-volcano", "nav-pca", "nav-heatmap", "nav-kegg", "nav-go", "nav-network", "nav-gsea"];
     disabledIds.forEach(id => {
         document.getElementById(id).classList.remove("disabled");
     });
@@ -764,6 +770,9 @@ function initControls() {
     
     // GO Enrichment
     document.getElementById("run-go-btn").addEventListener("click", runGOEnrichment);
+    
+    // STRING Network Rebuild
+    document.getElementById("btn-rebuild-network").addEventListener("click", renderNetworkGraph);
     
     // Volcano Toggle buttons
     document.getElementById("btn-show-volcano").addEventListener("click", () => {
@@ -1576,6 +1585,7 @@ function runGOEnrichment() {
         return r.json();
     })
     .then(data => {
+        runDomainEnrichment(targetList);
         tbody.innerHTML = "";
         
         const enrichList = data.enrichment || [];
@@ -1697,5 +1707,408 @@ function runGOEnrichment() {
     })
     .catch(err => {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">에러 발생: ${err.message}</td></tr>`;
+    });
+}
+
+// ----------------------------------------------------------------------
+// 9. Protein Domain Enrichment (Pfam/InterPro)
+// ----------------------------------------------------------------------
+function runDomainEnrichment(targetList) {
+    const tbody = document.getElementById("domain-table-body");
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center"><i class="fa-solid fa-spinner fa-spin icon-margin"></i>도메인 농축 검정 수행 중...</td></tr>`;
+    
+    fetch(`${API_URL}/api/domain_enrichment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ genes: targetList })
+    })
+    .then(r => r.json())
+    .then(data => {
+        tbody.innerHTML = "";
+        const list = data.enrichment || [];
+        if (list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">유의미하게 농축된 도메인이 없습니다.</td></tr>`;
+            Plotly.purge('domain-pie-chart');
+            return;
+        }
+        
+        list.slice(0, 30).forEach(item => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td><code>${item.domain_id}</code></td>
+                <td><strong>${item.domain_name}</strong></td>
+                <td class="text-center">${item.k} / ${item.M}</td>
+                <td>${item.pvalue.toExponential(4)}</td>
+                <td>${item.fdr.toExponential(4)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+        const top5 = list.slice(0, 5);
+        const pieData = [{
+            values: top5.map(d => d.k),
+            labels: top5.map(d => `${d.domain_name} (${d.domain_id})`),
+            type: 'pie',
+            hole: 0.4,
+            marker: {
+                colors: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b']
+            }
+        }];
+        const pieLayout = {
+            title: {
+                text: '상위 농축 도메인 분포 (Hit 개수)',
+                font: { size: 13, color: '#0f172a', family: 'Inter, sans-serif' }
+            },
+            showlegend: false,
+            margin: { l: 20, r: 20, t: 40, b: 20 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)'
+        };
+        Plotly.newPlot('domain-pie-chart', pieData, pieLayout, {responsive: true});
+    })
+    .catch(err => {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">도메인 분석 에러: ${err.message}</td></tr>`;
+    });
+}
+
+// ----------------------------------------------------------------------
+// 10. Principal Component Analysis (PCA)
+// ----------------------------------------------------------------------
+function renderPCAPlot() {
+    if (gGenes.length === 0) return;
+    
+    const chartDiv = document.getElementById("pca-scatter-chart");
+    chartDiv.innerHTML = `<div style="text-align: center; padding-top: 150px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">PCA 차원 축소 연산 중...</p></div>`;
+    
+    fetch(`${API_URL}/api/pca`)
+    .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.detail || "PCA 연산 실패") });
+        return r.json();
+    })
+    .then(data => {
+        const results = data.results || [];
+        if (results.length === 0) {
+            chartDiv.innerHTML = `<div class="text-center text-muted" style="padding-top: 150px;">PCA 연산을 위한 반복구 데이터가 부족합니다.</div>`;
+            return;
+        }
+        
+        const wtPoints = results.filter(r => r.group === "WT");
+        const mutPoints = results.filter(r => r.group === "Mutant");
+        
+        const traceWT = {
+            x: wtPoints.map(p => p.pc1),
+            y: wtPoints.map(p => p.pc2),
+            mode: 'markers+text',
+            type: 'scatter',
+            name: '대조군 (WT)',
+            text: wtPoints.map(p => p.sample),
+            textposition: 'top center',
+            marker: { size: 16, color: '#3b82f6', symbol: 'circle' }
+        };
+        
+        const traceMut = {
+            x: mutPoints.map(p => p.pc1),
+            y: mutPoints.map(p => p.pc2),
+            mode: 'markers+text',
+            type: 'scatter',
+            name: '실험군 (Mutant)',
+            text: mutPoints.map(p => p.sample),
+            textposition: 'top center',
+            marker: { size: 16, color: '#ef4444', symbol: 'square' }
+        };
+        
+        const layout = {
+            title: {
+                text: `PCA 주성분 분포 (PC1: ${(data.pc1_var * 100).toFixed(1)}% / PC2: ${(data.pc2_var * 100).toFixed(1)}%)`,
+                font: { size: 16, color: '#0f172a', family: 'Inter, sans-serif' }
+            },
+            xaxis: { title: 'Principal Component 1 (PC1)', gridcolor: '#e2e8f0', zerolinecolor: '#cbd5e1' },
+            yaxis: { title: 'Principal Component 2 (PC2)', gridcolor: '#e2e8f0', zerolinecolor: '#cbd5e1' },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            hovermode: 'closest',
+            margin: { l: 60, r: 40, t: 60, b: 60 }
+        };
+        
+        Plotly.newPlot('pca-scatter-chart', [traceWT, traceMut], layout, {responsive: true});
+    })
+    .catch(err => {
+        chartDiv.innerHTML = `<div class="text-center text-danger" style="padding-top: 150px;"><i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i><p>PCA 수행 실패: ${err.message}</p></div>`;
+    });
+}
+
+// ----------------------------------------------------------------------
+// 11. STRING PPI Network Graph
+// ----------------------------------------------------------------------
+let cyInstance = null;
+function renderNetworkGraph() {
+    const limit = document.getElementById("network-limit").value;
+    const score = document.getElementById("network-score").value;
+    
+    const container = document.getElementById("cy-network");
+    container.innerHTML = `<div style="text-align: center; padding-top: 200px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">STRING-DB 상호작용 정보 다운로드 중...</p></div>`;
+    
+    fetch(`${API_URL}/api/network?limit=${limit}&score=${score}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-triangle-exclamation fa-2x mb-10"></i><p>${data.detail}</p></div>`;
+            return;
+        }
+        
+        const nodes = data.nodes || [];
+        const edges = data.edges || [];
+        
+        if (nodes.length === 0) {
+            container.innerHTML = `<div class="text-center text-muted" style="padding-top: 200px;">상위 DEG 유전자들에 매칭되는 상호작용 노드가 없습니다.</div>`;
+            return;
+        }
+        
+        container.innerHTML = "";
+        
+        const elements = [];
+        nodes.forEach(n => {
+            let color = '#cbd5e1';
+            if (n.log2fc > 0) {
+                const intensity = Math.min(n.log2fc / 2.0, 1.0);
+                color = `rgb(${255}, ${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)})`;
+            } else if (n.log2fc < 0) {
+                const intensity = Math.min(Math.abs(n.log2fc) / 2.0, 1.0);
+                color = `rgb(${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)}, ${255})`;
+            }
+            
+            elements.push({
+                data: {
+                    id: n.id,
+                    label: n.label,
+                    log2fc: n.log2fc,
+                    desc: n.desc,
+                    bg: color
+                }
+            });
+        });
+        
+        edges.forEach((e, idx) => {
+            elements.push({
+                data: {
+                    id: `e_${idx}`,
+                    source: e.source,
+                    target: e.target,
+                    weight: e.score / 1000.0
+                }
+            });
+        });
+        
+        cyInstance = cytoscape({
+            container: container,
+            elements: elements,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'background-color': 'data(bg)',
+                        'border-width': '2px',
+                        'border-color': '#1e293b',
+                        'color': '#0f172a',
+                        'font-size': '12px',
+                        'font-weight': 'bold',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'width': '50px',
+                        'height': '50px',
+                        'overlay-padding': '4px',
+                        'text-outline-width': '2px',
+                        'text-outline-color': '#ffffff'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 'mapData(weight, 0.4, 1.0, 1.5, 4.0)',
+                        'line-color': '#94a3b8',
+                        'curve-style': 'bezier',
+                        'opacity': 0.7
+                    }
+                }
+            ],
+            layout: {
+                name: 'cose',
+                animate: true,
+                nodeRepulsion: function( node ){ return 2048; },
+                idealEdgeLength: function( edge ){ return 64; },
+                fit: true
+            }
+        });
+        
+        const detailsPanel = document.getElementById("network-node-details");
+        cyInstance.on('tap', 'node', function(evt){
+            const nodeData = evt.target.data();
+            detailsPanel.innerHTML = `
+                <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+                    <span style="font-size: 11px; font-weight: 600; color: #6366f1; text-transform: uppercase;">ORF Name</span>
+                    <h5 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 2px 0;">${nodeData.id}</h5>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="font-size: 11px; font-weight: 600; color: #64748b;">Gene Symbol</span>
+                    <p style="font-size: 14px; font-weight: 500; color: #1e293b; margin: 2px 0;">${nodeData.label}</p>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="font-size: 11px; font-weight: 600; color: #64748b;">Log2 Fold Change</span>
+                    <p style="font-size: 14px; font-weight: 600; color: ${nodeData.log2fc >= 0 ? '#ef4444' : '#3b82f6'}; margin: 2px 0;">
+                        ${nodeData.log2fc >= 0 ? '+' : ''}${nodeData.log2fc.toFixed(4)}
+                    </p>
+                </div>
+                <div>
+                    <span style="font-size: 11px; font-weight: 600; color: #64748b;">Description</span>
+                    <p style="font-size: 13px; line-height: 1.5; color: #475569; margin: 2px 0; max-height: 200px; overflow-y: auto;">
+                        ${nodeData.desc || '정보 없음'}
+                    </p>
+                </div>
+            `;
+        });
+    })
+    .catch(err => {
+        container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i><p>네트워크 렌더링 실패: ${err.message}</p></div>`;
+    });
+}
+
+// ----------------------------------------------------------------------
+// 12. GSEA Enrichment Score Plot
+// ----------------------------------------------------------------------
+let gGseaTerms = [];
+function loadGSEATerms() {
+    const listContainer = document.getElementById("gsea-terms-list");
+    listContainer.innerHTML = `<div style="text-align: center; padding-top: 40px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin"></i><p style="font-size: 12px; margin-top: 6px;">유전자 범주 불러오는 중...</p></div>`;
+    
+    fetch(`${API_URL}/api/gsea_terms`)
+    .then(r => r.json())
+    .then(data => {
+        gGseaTerms = data.terms || [];
+        renderGSEAList(gGseaTerms);
+        
+        const searchInput = document.getElementById("gsea-search");
+        searchInput.replaceWith(searchInput.cloneNode(true));
+        document.getElementById("gsea-search").addEventListener("input", (e) => {
+            const val = e.target.value.toLowerCase();
+            const filtered = gGseaTerms.filter(t => t.name.toLowerCase().includes(val) || t.term_id.toLowerCase().includes(val));
+            renderGSEAList(filtered);
+        });
+    })
+    .catch(err => {
+        listContainer.innerHTML = `<p class="text-center text-danger" style="padding: 20px;">범주 로드 실패: ${err.message}</p>`;
+    });
+}
+
+function renderGSEAList(terms) {
+    const listContainer = document.getElementById("gsea-terms-list");
+    listContainer.innerHTML = "";
+    if (terms.length === 0) {
+        listContainer.innerHTML = `<p class="text-center text-muted" style="padding: 20px 0;">검색 결과가 없습니다.</p>`;
+        return;
+    }
+    
+    terms.forEach(t => {
+        const div = document.createElement("div");
+        div.className = "kegg-item";
+        div.style.padding = "10px 12px";
+        div.style.borderBottom = "1px solid #f1f5f9";
+        div.innerHTML = `
+            <div style="font-weight: 600; font-size: 13px; color: #0f172a;">${t.name}</div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; color: #64748b;">
+                <span><code>${t.term_id}</code></span>
+                <span>${t.count} genes</span>
+            </div>
+        `;
+        div.addEventListener("click", () => {
+            const items = listContainer.querySelectorAll(".kegg-item");
+            items.forEach(i => i.classList.remove("active"));
+            div.classList.add("active");
+            
+            runGSEAAnalysis(t.term_id, t.name);
+        });
+        listContainer.appendChild(div);
+    });
+}
+
+function runGSEAAnalysis(termId, termName) {
+    const runningDiv = document.getElementById("gsea-running-plot");
+    const barcodeDiv = document.getElementById("gsea-barcode-plot");
+    
+    runningDiv.innerHTML = `<div style="text-align: center; padding-top: 100px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 8px;">GSEA Running Enrichment Score 계산 중...</p></div>`;
+    barcodeDiv.innerHTML = "";
+    
+    fetch(`${API_URL}/api/gsea_run/${termId}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            runningDiv.innerHTML = `<div class="text-center text-danger" style="padding-top: 100px;">GSEA 계산 실패: ${data.detail}</div>`;
+            return;
+        }
+        
+        const profile = data.es_profile || [];
+        const barcodes = data.barcode_ranks || [];
+        
+        const traceES = {
+            x: profile.map(p => p.rank),
+            y: profile.map(p => p.es),
+            mode: 'lines',
+            type: 'scatter',
+            name: 'Enrichment Score',
+            line: { color: '#22c55e', width: 3.5 }
+        };
+        
+        const traceZero = {
+            x: [0, profile.length ? profile[profile.length - 1].rank : 1000],
+            y: [0, 0],
+            mode: 'lines',
+            name: 'Zero Line',
+            line: { color: '#cbd5e1', dash: 'dash', width: 1.5 },
+            showlegend: false
+        };
+        
+        const runningLayout = {
+            title: {
+                text: `GSEA Running Score for "${termName}" (ES Peak: ${data.nes.toFixed(4)})`,
+                font: { size: 14, color: '#0f172a', family: 'Inter, sans-serif' }
+            },
+            xaxis: { title: 'Ranked Gene List Index', showgrid: false },
+            yaxis: { title: 'Enrichment Score (ES)', gridcolor: '#e2e8f0' },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 60, r: 20, t: 50, b: 40 },
+            hovermode: 'closest'
+        };
+        
+        Plotly.newPlot('gsea-running-plot', [traceES, traceZero], runningLayout, {responsive: true});
+        
+        const barcodeX = barcodes.map(b => b.rank);
+        
+        const traceBarcode = {
+            x: barcodeX,
+            y: Array(barcodeX.length).fill(1.0),
+            type: 'bar',
+            name: 'Hit',
+            width: 3.0,
+            marker: { color: '#0f172a', opacity: 0.8 },
+            showlegend: false
+        };
+        
+        const barcodeLayout = {
+            title: {
+                text: 'Gene Hits in Ranked List',
+                font: { size: 11, color: '#64748b', family: 'Inter, sans-serif' }
+            },
+            xaxis: { title: 'Ranked Index', showgrid: false, range: [0, profile.length ? profile[profile.length - 1].rank : 1000] },
+            yaxis: { showgrid: false, showticklabels: false, range: [0, 1.2] },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 60, r: 20, t: 30, b: 30 }
+        };
+        
+        Plotly.newPlot('gsea-barcode-plot', [traceBarcode], barcodeLayout, {responsive: true});
+    })
+    .catch(err => {
+        runningDiv.innerHTML = `<div class="text-center text-danger" style="padding-top: 100px;">오류: ${err.message}</div>`;
     });
 }

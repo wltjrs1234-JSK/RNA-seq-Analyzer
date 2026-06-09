@@ -16,6 +16,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
     <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
     <link rel="stylesheet" href="style.css">
+    <!-- Cytoscape.js for Network Visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -40,6 +42,10 @@
                     <i class="fa-solid fa-chart-scatter"></i>
                     <span class="menu-text">Volcano Plot</span>
                 </a>
+                <a href="#" class="menu-item disabled" id="nav-pca" data-tab="pca-tab">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span class="menu-text">PCA 분석</span>
+                </a>
                 <a href="#" class="menu-item disabled" id="nav-heatmap" data-tab="heatmap-tab">
                     <i class="fa-solid fa-border-all"></i>
                     <span class="menu-text">Heatmap</span>
@@ -50,7 +56,15 @@
                 </a>
                 <a href="#" class="menu-item disabled" id="nav-go" data-tab="go-tab">
                     <i class="fa-solid fa-tags"></i>
-                    <span class="menu-text">GO Enrichment</span>
+                    <span class="menu-text">GO/도메인 분석</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-network" data-tab="network-tab">
+                    <i class="fa-solid fa-circle-nodes"></i>
+                    <span class="menu-text">상호작용 네트워크</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-gsea" data-tab="gsea-tab">
+                    <i class="fa-solid fa-chart-area"></i>
+                    <span class="menu-text">GSEA 농축</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -411,26 +425,143 @@
                                 <div id="go-bar-chart" style="width: 100%; height: 450px;"></div>
                             </div>
                             
-                            <div class="table-responsive max-height-table">
-                                <table class="data-table" id="go-table">
-                                    <thead>
-                                        <tr>
-                                            <th>GO Term ID</th>
-                                            <th>카테고리 (Aspect)</th>
-                                            <th>기능 명칭 (GO Term Name)</th>
-                                            <th class="stat-header">매칭 유전자 수 (k)</th>
-                                            <th class="stat-header">해당 범주 전체 유전자 수 (M)</th>
-                                            <th class="stat-header">p-value</th>
-                                            <th class="stat-header">FDR (BH)</th>
-                                            <th>매칭된 유전자 목록</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="go-table-body">
-                                        <tr>
-                                            <td colspan="8" class="text-center text-muted">분석 실행 버튼을 누르시면 분석 결과가 여기에 표시됩니다.</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            </div>
+
+                            <!-- Protein Domain Enrichment Section -->
+                            <div class="protein-domain-section" style="margin-top: 40px; border-top: 1px solid var(--border-color); padding-top: 30px;">
+                                <h4 class="section-title mb-15" style="font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-shapes" style="color: #6366f1;"></i> Protein Domain (Pfam/InterPro) 및 기능 도메인 농축 결과
+                                </h4>
+                                <div class="alert-box mb-20" style="background: rgba(99, 102, 241, 0.05); border-left-color: #6366f1;">
+                                    <i class="fa-solid fa-circle-info alert-icon" style="color: #6366f1;"></i>
+                                    <p class="alert-text">선택된 DEG 유전자군이 보유한 <strong>단백질 패밀리 도메인</strong> 분포를 분석하여 특정 분자 도메인이 통계적으로 유의미하게 농축되어 있는지 분석합니다.</p>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; margin-bottom: 24px;">
+                                    <div class="table-responsive max-height-table">
+                                        <table class="data-table" id="domain-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>도메인 ID (Pfam)</th>
+                                                    <th>도메인 설명 (Domain Name)</th>
+                                                    <th class="stat-header">매칭 (k)</th>
+                                                    <th class="stat-header">p-value</th>
+                                                    <th class="stat-header">FDR (BH)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="domain-table-body">
+                                                <tr>
+                                                    <td colspan="5" class="text-center text-muted">분석 실행 버튼을 누르시면 도메인 결과가 함께 연산됩니다.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="chart-box" style="background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; min-height: 350px; display: flex; align-items: center; justify-content: center;">
+                                        <div id="domain-pie-chart" style="width: 100%; height: 320px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 7: PCA Analysis -->
+                <section class="tab-pane" id="pca-tab">
+                    <div class="card glass-card">
+                        <div class="card-header flex-header">
+                            <h3 class="card-title">PCA (주성분 분석) - 샘플 변동성</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert-box mb-20">
+                                <i class="fa-solid fa-circle-info alert-icon"></i>
+                                <p class="alert-text">전체 유전자 발현 데이터를 주성분 분석(PCA)으로 차원 축소하여 WT 3개 반복구와 Mutant 3개 반복구 간의 분리도와 발현 변동성(Variance)을 시각화합니다.</p>
+                            </div>
+                            <div class="go-chart-container" style="min-height: 500px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px;">
+                                <div id="pca-scatter-chart" style="width: 100%; height: 500px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 8: Protein Interaction Network -->
+                <section class="tab-pane" id="network-tab">
+                    <div class="card glass-card">
+                        <div class="card-header flex-header">
+                            <h3 class="card-title">STRING-DB 단백질 상호작용 네트워크</h3>
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <div class="control-group" style="margin-bottom: 0;">
+                                    <label for="network-limit" style="font-size: 12px;">노드 개수:</label>
+                                    <select id="network-limit" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
+                                        <option value="30">상위 30개 DEG</option>
+                                        <option value="50" selected>상위 50개 DEG</option>
+                                        <option value="100">상위 100개 DEG</option>
+                                    </select>
+                                </div>
+                                <div class="control-group" style="margin-bottom: 0;">
+                                    <label for="network-score" style="font-size: 12px;">신뢰도 기준:</label>
+                                    <select id="network-score" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
+                                        <option value="400" selected>보통 (0.40)</option>
+                                        <option value="700">높음 (0.70)</option>
+                                        <option value="900">매우 높음 (0.90)</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary btn-sm" id="btn-rebuild-network" style="height: 28px; font-size: 12px; padding: 4px 10px; display: flex; align-items: center; gap: 4px;">
+                                    <i class="fa-solid fa-arrows-rotate"></i>네트워크 갱신
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="display: grid; grid-template-columns: 1.4fr 0.6fr; gap: 20px;">
+                            <div class="network-container-box" style="position: relative; height: 600px; border: 1px solid var(--border-color); border-radius: 12px; background: #fafafa; overflow: hidden;">
+                                <div id="cy-network" style="width: 100%; height: 100%;"></div>
+                                <div class="kegg-legend" style="position: absolute; bottom: 12px; left: 12px; background: rgba(255, 255, 255, 0.9); padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 11px;">
+                                    <span class="legend-item"><span class="legend-box up-box"></span> 발현 증가</span>
+                                    <span class="legend-item"><span class="legend-box down-box"></span> 발현 감소</span>
+                                </div>
+                            </div>
+                            <div class="card glass-card" style="margin-bottom: 0; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); display: flex; flex-direction: column;">
+                                <div class="card-header" style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">
+                                    <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin: 0;"><i class="fa-solid fa-magnifying-glass-biochemistry icon-margin"></i>선택한 단백질 정보</h4>
+                                </div>
+                                <div class="card-body" id="network-node-details" style="padding: 16px; font-size: 13px; color: #475569; overflow-y: auto; flex: 1;">
+                                    <p class="text-center text-muted" style="margin-top: 100px;">네트워크에서 유전자 노드를 클릭하시면 상세 기능 설명이 여기에 표시됩니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 9: GSEA Enrichment -->
+                <section class="tab-pane" id="gsea-tab">
+                    <div class="card glass-card">
+                        <div class="card-header flex-header">
+                            <h3 class="card-title">GSEA 스타일 랭킹 기반 농축 분석 (GSEA Running Score)</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert-box mb-20">
+                                <i class="fa-solid fa-circle-info alert-icon"></i>
+                                <p class="alert-text">전체 유전자를 발현 변화량(Log2FC) 순위로 정렬한 상태에서 특정 GO 범주가 상단(증가) 또는 하단(감소)에 유의미하게 쏠려있는지 <strong>Enrichment Score Running Curve</strong>로 정밀 분석합니다.</p>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 0.6fr 1.4fr; gap: 24px;">
+                                <div class="card glass-card" style="margin-bottom: 0; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); display: flex; flex-direction: column;">
+                                    <div class="card-header" style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">
+                                        <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin: 0;"><i class="fa-solid fa-list icon-margin"></i>분석 대상 유전자 세트 목록</h4>
+                                    </div>
+                                    <div style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; gap: 8px;">
+                                        <input type="text" id="gsea-search" placeholder="기능 명칭 검색..." style="width: 100%; height: 28px; padding: 2px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                    </div>
+                                    <div id="gsea-terms-list" style="overflow-y: auto; max-height: 480px; flex: 1; padding: 6px;">
+                                        <!-- Will be populated dynamically -->
+                                        <p class="text-center text-muted" style="padding: 20px 0;">데이터 분석 대기 중...</p>
+                                    </div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 20px;">
+                                    <div class="chart-box" style="background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; min-height: 380px;">
+                                        <div id="gsea-running-plot" style="width: 100%; height: 350px;"></div>
+                                    </div>
+                                    <div class="chart-box" style="background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; min-height: 150px;">
+                                        <div id="gsea-barcode-plot" style="width: 100%; height: 120px;"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
