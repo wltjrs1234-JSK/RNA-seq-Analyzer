@@ -9,16 +9,7 @@ echo   S. cerevisiae RNA-seq Analyzer Launcher
 echo ============================================================
 echo.
 
-:: 1. Check and free port 8000 if occupied
-echo Checking port 8000 status...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING"') do (
-    if not "%%a"=="" (
-        echo Found existing process %%a on port 8000. Terminating...
-        taskkill /F /PID %%a >nul 2>&1
-    )
-)
-
-:: 2. Find working python executable
+:: 1. Find working python executable
 echo Detecting Python environment...
 set PYTHON_CMD=none
 
@@ -46,6 +37,10 @@ if "%PYTHON_CMD%"=="none" (
 
 echo Using Python command: %PYTHON_CMD%
 %PYTHON_CMD% --version
+
+:: 2. Check and free port 8000 if occupied (Using Python to safely parse netstat and taskkill)
+echo Cleaning up port 8000...
+%PYTHON_CMD% -c "import os, subprocess; lines = subprocess.check_output('netstat -ano', shell=True).decode('utf-8').split('\n'); pids = [line.strip().split()[-1] for line in lines if ':8000' in line and 'LISTENING' in line]; [subprocess.call('taskkill /F /PID ' + pid, shell=True) for pid in set(pids) if pid.isdigit()]" >nul 2>&1
 
 :: 3. Install required library packages
 echo Checking and installing packages...
