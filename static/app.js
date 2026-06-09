@@ -8,6 +8,8 @@ let gIsReplicateMode = false;
 let gSelectedGene = null;
 let gActiveTab = 'upload-tab';
 let gPathwayList = [];
+let gCurrentSortKey = null;
+let gCurrentSortOrder = 'none'; // 'none', 'asc', 'desc'
 
 // Base API URL (can be blank since we are hosting static files on same port)
 const API_URL = "";
@@ -702,6 +704,11 @@ function finalizeDataLoading() {
     updateStatus("ready", "분석 완료");
     enableAnalysisTabs();
     
+    // Assign original order index for sort reset fallback
+    gGenes.forEach((gene, index) => {
+        gene.original_index = index;
+    });
+    
     // Configure p-value filters visibility based on mode
     const pvalFilterGroup = document.getElementById("pvalue-filter-group");
     const heatmapMetricPvalue = document.getElementById("heatmap-metric-pvalue");
@@ -786,6 +793,50 @@ function initControls() {
         document.getElementById("btn-show-volcano").classList.remove("active");
         renderPlot("ma");
     });
+
+    // Add sorting listeners for DEG table headers
+    document.querySelectorAll(".sortable-header").forEach(th => {
+        th.addEventListener("click", () => {
+            const key = th.getAttribute("data-sort-key");
+            handleHeaderSort(key, th);
+        });
+    });
+}
+
+function handleHeaderSort(key, thEl) {
+    if (gCurrentSortKey === key) {
+        // Toggle: none -> asc -> desc -> none
+        if (gCurrentSortOrder === 'none') gCurrentSortOrder = 'asc';
+        else if (gCurrentSortOrder === 'asc') gCurrentSortOrder = 'desc';
+        else gCurrentSortOrder = 'none';
+    } else {
+        gCurrentSortKey = key;
+        gCurrentSortOrder = 'asc';
+    }
+    
+    // Reset all headers state
+    document.querySelectorAll(".sortable-header").forEach(th => {
+        th.classList.remove("active-sort");
+        const icon = th.querySelector(".sort-icon");
+        if (icon) {
+            icon.className = "fa-solid fa-sort sort-icon";
+        }
+    });
+    
+    // Set active header state
+    if (gCurrentSortOrder !== 'none') {
+        thEl.classList.add("active-sort");
+        const icon = thEl.querySelector(".sort-icon");
+        if (icon) {
+            if (gCurrentSortOrder === 'asc') {
+                icon.className = "fa-solid fa-sort-up sort-icon";
+            } else {
+                icon.className = "fa-solid fa-sort-down sort-icon";
+            }
+        }
+    }
+    
+    renderDEGTable();
 }
 
 function renderDEGTable() {
@@ -799,8 +850,53 @@ function renderDEGTable() {
     let upCount = 0;
     let downCount = 0;
     let filteredCount = 0;
+    const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
     
-    gGenes.forEach(gene => {
+    // Sort logic
+    let sortedGenes = [...gGenes];
+    if (gCurrentSortKey && gCurrentSortOrder !== 'none') {
+        const key = gCurrentSortKey;
+        const order = gCurrentSortOrder === 'asc' ? 1 : -1;
+        
+        sortedGenes.sort((a, b) => {
+            let valA, valB;
+            
+            if (key === "classification") {
+                const getClassification = (gene) => {
+                    const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
+                    const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
+                    let passesPVal = true;
+                    if (statType !== "none" && gIsReplicateMode) {
+                        passesPVal = (statVal !== null && statVal <= pvalThresh);
+                    }
+                    if (passesLog2FC && passesPVal) {
+                        if (gene.log2fc >= log2fcThresh) return "Upregulated";
+                        if (gene.log2fc <= -log2fcThresh) return "Downregulated";
+                    }
+                    return "Neutral";
+                };
+                valA = getClassification(a);
+                valB = getClassification(b);
+            } else {
+                valA = a[key];
+                valB = b[key];
+            }
+            
+            if (valA === null || valA === undefined) return 1;
+            if (valB === null || valB === undefined) return -1;
+            
+            if (typeof valA === "string") {
+                return order * valA.localeCompare(valB);
+            } else {
+                return order * (valA - valB);
+            }
+        });
+    } else {
+        // Fallback to original order
+        sortedGenes.sort((a, b) => (a.original_index || 0) - (b.original_index || 0));
+    }
+    
+    sortedGenes.forEach(gene => {
         const symbol = gene.gene_symbol.toLowerCase();
         const locus = gene.locus_tag.toLowerCase();
         
@@ -813,7 +909,6 @@ function renderDEGTable() {
         let classification = "Neutral";
         let classClass = "";
         
-        const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
         const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
         
         const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;

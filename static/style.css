@@ -623,6 +623,26 @@ body {
     z-index: 10;
 }
 
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.sortable-header:hover {
+    background-color: #cbd5e1 !important;
+}
+
+.sort-icon {
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.sortable-header.active-sort .sort-icon {
+    color: var(--accent-blue);
+}
+
 .data-table td {
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
