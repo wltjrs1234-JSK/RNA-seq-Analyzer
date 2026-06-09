@@ -640,22 +640,39 @@ def get_pathways():
     # Also count how many genes are in our uploaded data for each pathway
     gene_to_pathways = get_kegg_gene_mapping()
     
+    # Load symbol map from uploaded genes to allow searching by symbol
+    symbol_map = {}
     genes_in_data = set()
     if os.path.exists(PARSED_DATA_PATH):
         with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
-            genes_in_data = set(g["locus_tag"] for g in json.load(f))
-            
+            for g in json.load(f):
+                tag = g["locus_tag"].upper()
+                sym = g["gene_symbol"].upper()
+                genes_in_data.add(g["locus_tag"])
+                symbol_map[tag] = sym
+                
     pathway_counts = {}
+    pathway_genes_mapping = {}
     for path_id, genes in gene_to_pathways.items():
         overlap = genes_in_data.intersection(genes)
         pathway_counts[path_id] = len(overlap)
+        
+        # Save matched genes (both locus_tag and symbol) for client-side filtering
+        matched_search_terms = []
+        for g in genes:
+            g_upper = g.upper()
+            matched_search_terms.append(g_upper) # locus tag
+            if g_upper in symbol_map:
+                matched_search_terms.append(symbol_map[g_upper]) # gene symbol
+        pathway_genes_mapping[path_id] = list(set(matched_search_terms))
         
     pathways_list = []
     for path_id, desc in pathways.items():
         pathways_list.append({
             "pathway_id": path_id,
             "description": desc,
-            "gene_count": pathway_counts.get(path_id, 0)
+            "gene_count": pathway_counts.get(path_id, 0),
+            "search_genes": pathway_genes_mapping.get(path_id, [])
         })
         
     # Sort by mapped gene count descending

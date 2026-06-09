@@ -801,6 +801,14 @@ function initControls() {
             handleHeaderSort(key, th);
         });
     });
+
+    // KEGG Pathway Gene Search Input Event
+    const keggSearchInput = document.getElementById("kegg-search-gene");
+    if (keggSearchInput) {
+        keggSearchInput.addEventListener("input", (e) => {
+            renderPathwayList(e.target.value);
+        });
+    }
 }
 
 function handleHeaderSort(key, thEl) {
@@ -1371,36 +1379,65 @@ function fetchKEGGPathways() {
         .then(r => r.json())
         .then(data => {
             gPathwayList = data.pathways;
-            listEl.innerHTML = "";
             
-            if (gPathwayList.length === 0) {
-                listEl.innerHTML = '<li class="loading-item text-muted">경로 데이터가 없습니다.</li>';
-                return;
-            }
+            // Clear input search term on fetch new dataset
+            const searchInput = document.getElementById("kegg-search-gene");
+            if (searchInput) searchInput.value = "";
             
-            gPathwayList.forEach(path => {
-                const li = document.createElement("li");
-                li.innerHTML = `
-                    <div class="kegg-path-desc" title="${path.description}">
-                        <span class="kegg-path-id">${path.pathway_id}</span>
-                        ${path.description}
-                    </div>
-                    <span class="kegg-gene-count-badge">${path.gene_count} 유전자 매핑</span>
-                `;
-                
-                li.addEventListener("click", () => {
-                    document.querySelectorAll("#kegg-pathway-list li").forEach(el => el.classList.remove("active"));
-                    li.classList.add("active");
-                    
-                    loadPathwayMap(path);
-                });
-                
-                listEl.appendChild(li);
-            });
+            renderPathwayList("");
         })
         .catch(err => {
             listEl.innerHTML = `<li class="loading-item text-danger">실패: ${err.message}</li>`;
         });
+}
+
+function renderPathwayList(keyword) {
+    const listEl = document.getElementById("kegg-pathway-list");
+    listEl.innerHTML = "";
+    
+    if (!gPathwayList || gPathwayList.length === 0) {
+        listEl.innerHTML = '<li class="loading-item text-muted">경로 데이터가 없습니다.</li>';
+        return;
+    }
+    
+    const searchVal = keyword.trim().toUpperCase();
+    const filtered = gPathwayList.filter(path => {
+        if (!searchVal) return true;
+        // Search by Pathway ID or description
+        if (path.pathway_id.toUpperCase().includes(searchVal) || path.description.toUpperCase().includes(searchVal)) {
+            return true;
+        }
+        // Search by contained gene symbols or locus_tags
+        if (path.search_genes && path.search_genes.some(g => g.includes(searchVal))) {
+            return true;
+        }
+        return false;
+    });
+    
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<li class="loading-item text-muted">검색 조건에 맞는 경로가 없습니다.</li>';
+        return;
+    }
+    
+    filtered.forEach(path => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+            <div class="kegg-path-desc" title="${path.description}">
+                <span class="kegg-path-id">${path.pathway_id}</span>
+                ${path.description}
+            </div>
+            <span class="kegg-gene-count-badge">${path.gene_count} 유전자 매핑</span>
+        `;
+        
+        li.addEventListener("click", () => {
+            document.querySelectorAll("#kegg-pathway-list li").forEach(el => el.classList.remove("active"));
+            li.classList.add("active");
+            
+            loadPathwayMap(path);
+        });
+        
+        listEl.appendChild(li);
+    });
 }
 
 function loadPathwayMap(path) {
