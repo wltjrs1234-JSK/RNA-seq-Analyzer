@@ -699,8 +699,18 @@ function finalizeDataLoading() {
     // Configure p-value filters visibility based on mode
     const pvalFilterGroup = document.getElementById("pvalue-filter-group");
     const heatmapMetricPvalue = document.getElementById("heatmap-metric-pvalue");
+    const statType = document.getElementById("stat-type").value;
+    const pvalInput = document.getElementById("pvalue-thresh");
+    
     if (gIsReplicateMode) {
         pvalFilterGroup.style.display = "flex";
+        if (statType === "none") {
+            pvalInput.disabled = true;
+            pvalInput.style.opacity = "0.5";
+        } else {
+            pvalInput.disabled = false;
+            pvalInput.style.opacity = "1.0";
+        }
         heatmapMetricPvalue.disabled = false;
         document.getElementById("plot-title-text").textContent = "Volcano Plot";
         document.getElementById("plot-toggle-btns").style.display = "flex";
@@ -737,11 +747,13 @@ function initControls() {
     // Statistical significance criteria toggle
     document.getElementById("stat-type").addEventListener("change", () => {
         const statType = document.getElementById("stat-type").value;
-        const label = document.getElementById("pvalue-thresh-label");
-        if (statType === "fdr") {
-            label.textContent = "임계값:";
+        const pvalInput = document.getElementById("pvalue-thresh");
+        if (statType === "none") {
+            pvalInput.disabled = true;
+            pvalInput.style.opacity = "0.5";
         } else {
-            label.textContent = "임계값:";
+            pvalInput.disabled = false;
+            pvalInput.style.opacity = "1.0";
         }
         renderDEGTable();
         renderVolcanoOrMAPlot();
@@ -796,7 +808,10 @@ function renderDEGTable() {
         const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
         
         const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
-        const passesPVal = !gIsReplicateMode || (statVal !== null && statVal <= pvalThresh);
+        let passesPVal = true;
+        if (statType !== "none" && gIsReplicateMode) {
+            passesPVal = (statVal !== null && statVal <= pvalThresh);
+        }
         
         if (passesLog2FC && passesPVal) {
             if (gene.log2fc >= log2fcThresh) {
@@ -869,7 +884,10 @@ function renderPlot(plotType) {
     
     gGenes.forEach(gene => {
         const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
-        const passesPVal = !gIsReplicateMode || (statVal !== null && statVal <= pvalThresh);
+        let passesPVal = true;
+        if (statType !== "none" && gIsReplicateMode) {
+            passesPVal = (statVal !== null && statVal <= pvalThresh);
+        }
         const isUp = gene.log2fc >= log2fcThresh && passesPVal;
         const isDown = gene.log2fc <= -log2fcThresh && passesPVal;
         
@@ -879,8 +897,9 @@ function renderPlot(plotType) {
         
         if (plotType === "volcano") {
             xData.push(gene.log2fc);
-            // Y-axis is -log10(FDR) or -log10(p-value)
-            const yVal = (statVal !== null && statVal > 0) ? -Math.log10(statVal) : 0;
+            // Y-axis: if statType is none, default to using FDR to draw Volcano shape
+            const yStatVal = statType === "none" ? gene.fdr : statVal;
+            const yVal = (yStatVal !== null && yStatVal > 0) ? -Math.log10(yStatVal) : 0;
             yData.push(yVal);
         } else {
             // MA Plot: X-axis is log2 Mean Expression, Y-axis is Log2FC
@@ -927,7 +946,7 @@ function renderPlot(plotType) {
             zerolinecolor: '#cbd5e1'
         },
         yaxis: {
-            title: plotType === "volcano" ? (statType === "fdr" ? '-Log10(FDR)' : '-Log10(p-value)') : 'Log2 Fold Change',
+            title: plotType === "volcano" ? (statType === "fdr" || statType === "none" ? '-Log10(FDR)' : '-Log10(p-value)') : 'Log2 Fold Change',
             gridcolor: '#e2e8f0',
             zerolinecolor: '#cbd5e1'
         },
@@ -954,7 +973,7 @@ function renderPlot(plotType) {
                 line: { color: 'rgba(15, 23, 42, 0.25)', width: 1, dash: 'dash' }
             }
         );
-        if (gIsReplicateMode && pvalThresh < 1.0) {
+        if (gIsReplicateMode && statType !== "none" && pvalThresh < 1.0) {
             const hVal = -Math.log10(pvalThresh);
             layout.shapes.push(
                 // Horizontal FDR line
@@ -1520,7 +1539,10 @@ function runGOEnrichment() {
     gGenes.forEach(gene => {
         const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
         const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
-        const passesPVal = !gIsReplicateMode || (statVal !== null && statVal <= pvalThresh);
+        let passesPVal = true;
+        if (statType !== "none" && gIsReplicateMode) {
+            passesPVal = (statVal !== null && statVal <= pvalThresh);
+        }
         
         if (passesLog2FC && passesPVal) {
             if (direction === "up" && gene.log2fc >= log2fcThresh) {
