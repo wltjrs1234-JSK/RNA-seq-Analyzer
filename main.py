@@ -1140,7 +1140,7 @@ if __name__ == "__main__":
 
     def open_browser():
         time.sleep(1.5)
-        url = "http://127.0.0.1:8000"
+        url = "http://127.0.0.1:8500"
         try:
             # 1. 시스템에 등록된 Chrome 브라우저 기동 시도
             chrome = webbrowser.get("chrome")
@@ -1174,4 +1174,4 @@ if __name__ == "__main__":
     get_kegg_pathways()
     get_kegg_gene_mapping()
     # Run server
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8500)

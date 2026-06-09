@@ -1,11 +1,9 @@
 @echo off
 title S. cerevisiae RNA-seq Analyzer Launcher
-
-:: Force working directory to the batch file location
 cd /d "%~dp0"
 
 echo ============================================================
-echo   S. cerevisiae RNA-seq Analyzer Launcher
+echo   S. cerevisiae RNA-seq Analyzer Launcher (Port: 8500)
 echo ============================================================
 echo.
 
@@ -38,9 +36,9 @@ if "%PYTHON_CMD%"=="none" (
 echo Using Python command: %PYTHON_CMD%
 %PYTHON_CMD% --version
 
-:: 2. Check and free port 8000 if occupied (Using Python to safely parse netstat and taskkill)
-echo Cleaning up port 8000...
-%PYTHON_CMD% -c "import os, subprocess; lines = subprocess.check_output('netstat -ano', shell=True).decode('utf-8').split('\n'); pids = [line.strip().split()[-1] for line in lines if ':8000' in line and 'LISTENING' in line]; [subprocess.call('taskkill /F /PID ' + pid, shell=True) for pid in set(pids) if pid.isdigit()]" >nul 2>&1
+:: 2. Check and free port 8500 if occupied
+echo Cleaning up port 8500 if occupied...
+%PYTHON_CMD% -c "import os, subprocess; lines = subprocess.check_output('netstat -ano', shell=True).decode('utf-8').split('\n'); pids = [line.strip().split()[-1] for line in lines if ':8500' in line and 'LISTENING' in line]; [subprocess.call('taskkill /F /PID ' + pid, shell=True) for pid in set(pids) if pid.isdigit()]" >nul 2>&1
 
 :: 3. Install required library packages
 echo Checking and installing packages...
@@ -57,7 +55,7 @@ if not exist "data_cache\" mkdir data_cache
 :: 5. Launch application
 echo.
 echo ============================================================
-echo   Server starting at http://127.0.0.1:8000
+echo   Server starting at http://127.0.0.1:8500
 echo   Dashboard will open in Chrome automatically in a moment.
 echo   Press [Ctrl + C] in this window to stop the server.
 echo ============================================================
