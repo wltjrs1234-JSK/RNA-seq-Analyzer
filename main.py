@@ -543,6 +543,66 @@ def get_all_genes():
         genes = json.load(f)
     return {"genes": genes}
 
+@app.get("/api/export_deg_excel")
+def export_deg_excel():
+    """Export the currently analyzed DEG results as an Excel (.xlsx) file."""
+    import io
+    from fastapi.responses import StreamingResponse
+    
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="내보낼 분석 결과 데이터가 없습니다. 먼저 RNA-seq 데이터를 업로드해주세요.")
+        
+    try:
+        with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+            genes = json.load(f)
+            
+        if not genes:
+            raise HTTPException(status_code=400, detail="분석 결과 데이터가 비어 있습니다.")
+            
+        # Reconstruct to Pandas DataFrame
+        df_export = pd.DataFrame(genes)
+        
+        # Clean up column names and order for researchers
+        column_mapping = {
+            "locus_tag": "Systematic Name (ORF ID)",
+            "gene_symbol": "Gene Symbol",
+            "wt_val": "WT expression (Mean)",
+            "mutant_val": "Mutant expression (Mean)",
+            "log2fc": "Log2 Fold Change",
+            "pvalue": "p-value",
+            "fdr": "FDR (BH corrected)",
+            "description": "Gene Description",
+            "biotype": "Biotype"
+        }
+        
+        # Select and order columns that actually exist
+        existing_cols = [col for col in ["locus_tag", "gene_symbol", "wt_val", "mutant_val", "log2fc", "pvalue", "fdr", "description", "biotype"] if col in df_export.columns]
+        df_export = df_export[existing_cols]
+        df_export = df_export.rename(columns=column_mapping)
+        
+        # Create Excel file in memory
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_export.to_excel(writer, sheet_name='DEG_Analysis_Result', index=False)
+            
+            # Auto-fit columns width
+            worksheet = writer.sheets['DEG_Analysis_Result']
+            for col in worksheet.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                col_letter = col[0].column_letter
+                worksheet.column_dimensions[col_letter].width = max(max_len + 3, 10)
+                
+        output.seek(0)
+        
+        headers = {
+            'Content-Disposition': 'attachment; filename="yeast_rna_seq_deg_analysis.xlsx"',
+            'Access-Control-Expose-Headers': 'Content-Disposition'
+        }
+        return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Excel 생성 중 오류 발생: {str(e)}")
+
 @app.post("/api/go_enrichment")
 def run_go_enrichment(payload: dict):
     """Run Gene Ontology enrichment (hypergeometric test) on target genes."""

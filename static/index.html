@@ -246,20 +246,25 @@
                             </div>
                         </div>
                         <div class="card-body">
-                            <!-- Statistics Summary Badges -->
-                            <div class="deg-stats-bar">
-                                <div class="stat-badge up-badge">
-                                    <span class="stat-label">발현 증가 (Upregulated)</span>
-                                    <span class="stat-val" id="stat-up-count">0</span>
+                            <!-- Statistics Summary Badges with Excel export -->
+                            <div class="deg-stats-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+                                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                                    <div class="stat-badge up-badge">
+                                        <span class="stat-label">발현 증가 (Upregulated)</span>
+                                        <span class="stat-val" id="stat-up-count">0</span>
+                                    </div>
+                                    <div class="stat-badge down-badge">
+                                        <span class="stat-label">발현 감소 (Downregulated)</span>
+                                        <span class="stat-val" id="stat-down-count">0</span>
+                                    </div>
+                                    <div class="stat-badge total-badge">
+                                        <span class="stat-label">전체 분석 유전자</span>
+                                        <span class="stat-val" id="stat-total-count">0</span>
+                                    </div>
                                 </div>
-                                <div class="stat-badge down-badge">
-                                    <span class="stat-label">발현 감소 (Downregulated)</span>
-                                    <span class="stat-val" id="stat-down-count">0</span>
-                                </div>
-                                <div class="stat-badge total-badge">
-                                    <span class="stat-label">전체 분석 유전자</span>
-                                    <span class="stat-val" id="stat-total-count">0</span>
-                                </div>
+                                <button class="btn btn-success" id="btn-export-deg-excel" style="height: 38px; padding: 0 16px; display: flex; align-items: center; gap: 6px; font-weight: 500; font-size: 13px; background-color: #10b981; border-color: #10b981; color: white;">
+                                    <i class="fa-solid fa-file-excel"></i> Excel 내보내기
+                                </button>
                             </div>
 
                             <div class="table-responsive max-height-table">
@@ -293,9 +298,13 @@
                         <div class="card glass-card flex-2">
                             <div class="card-header flex-header">
                                 <h3 class="card-title" id="plot-title-text">Volcano Plot</h3>
-                                <div class="btn-group" id="plot-toggle-btns" style="display: none;">
-                                    <button class="btn btn-toggle active" id="btn-show-volcano">Volcano</button>
-                                    <button class="btn btn-toggle" id="btn-show-ma">MA Plot</button>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <div class="btn-group" id="plot-toggle-btns" style="display: none;">
+                                        <button class="btn btn-toggle active" id="btn-show-volcano">Volcano</button>
+                                        <button class="btn btn-toggle" id="btn-show-ma">MA Plot</button>
+                                    </div>
+                                    <button class="btn btn-secondary btn-export" id="btn-export-volcano-jpg" title="JPG 이미지로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-image"></i> JPG</button>
+                                    <button class="btn btn-secondary btn-export" id="btn-export-volcano-pdf" title="PDF 파일로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
                                 </div>
                             </div>
                             <div class="card-body">
@@ -353,8 +362,12 @@
                         </div>
 
                         <div class="card glass-card heatmap-chart-card">
-                            <div class="card-header">
+                            <div class="card-header flex-header">
                                 <h3 class="card-title">Top DEG Expression Heatmap</h3>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <button class="btn btn-secondary btn-export" id="btn-export-heatmap-jpg" title="JPG 이미지로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-image"></i> JPG</button>
+                                    <button class="btn btn-secondary btn-export" id="btn-export-heatmap-pdf" title="PDF 파일로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                                </div>
                             </div>
                             <div class="card-body heatmap-container">
                                 <div id="plotly-heatmap" class="chart-container"></div>
@@ -386,10 +399,16 @@
                         <div class="card glass-card flex-2 map-panel">
                             <div class="card-header flex-header">
                                 <h3 class="card-title" id="kegg-map-title">KEGG Pathway Map</h3>
-                                <div class="kegg-legend">
-                                    <span class="legend-item"><span class="legend-box up-box"></span> 발현 증가 (Mutant Up)</span>
-                                    <span class="legend-item"><span class="legend-box down-box"></span> 발현 감소 (Mutant Down)</span>
-                                    <span class="legend-item"><span class="legend-box no-box"></span> 변화 없음 / 미매칭</span>
+                                <div style="display: flex; gap: 12px; align-items: center;">
+                                    <div class="kegg-legend" style="margin-bottom: 0;">
+                                        <span class="legend-item"><span class="legend-box up-box"></span> 발현 증가 (Mutant Up)</span>
+                                        <span class="legend-item"><span class="legend-box down-box"></span> 발현 감소 (Mutant Down)</span>
+                                        <span class="legend-item"><span class="legend-box no-box"></span> 변화 없음 / 미매칭</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center; border-left: 1px solid var(--border-color); padding-left: 12px;">
+                                        <button class="btn btn-secondary btn-export" id="btn-export-kegg-jpg" title="JPG 이미지로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-image"></i> JPG</button>
+                                        <button class="btn btn-secondary btn-export" id="btn-export-kegg-pdf" title="PDF 파일로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                                    </div>
                                 </div>
                             </div>
                             <div class="card-body map-body-container" id="kegg-map-container">
@@ -408,13 +427,17 @@
                     <div class="card glass-card">
                         <div class="card-header flex-header">
                             <h3 class="card-title">Gene Ontology Enrichment (유전자 온톨로지 농축 분석)</h3>
-                            <div class="go-controls">
+                            <div class="go-controls" style="display: flex; gap: 8px; align-items: center;">
                                 <label for="go-direction">분석 대상 유전자군:</label>
                                 <select id="go-direction" class="input-select inline-select">
                                     <option value="up">발현 증가 유전자 (Upregulated DEGs)</option>
                                     <option value="down">발현 감소 유전자 (Downregulated DEGs)</option>
                                 </select>
                                 <button class="btn btn-primary" id="run-go-btn">Enrichment 분석 실행</button>
+                                <div style="display: flex; gap: 6px; align-items: center; border-left: 1px solid var(--border-color); padding-left: 10px; margin-left: 4px;">
+                                    <button class="btn btn-secondary btn-export" id="btn-export-go-jpg" title="차트 JPG 이미지로 내보내기" style="padding: 4px 8px; font-size: 11px; height: 32px;"><i class="fa-solid fa-image"></i> JPG</button>
+                                    <button class="btn btn-secondary btn-export" id="btn-export-go-pdf" title="차트 PDF 파일로 내보내기" style="padding: 4px 8px; font-size: 11px; height: 32px;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                                </div>
                             </div>
                         </div>
                         <div class="card-body">
@@ -492,6 +515,10 @@
                     <div class="card glass-card">
                         <div class="card-header flex-header">
                             <h3 class="card-title">PCA (주성분 분석) - 샘플 변동성</h3>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button class="btn btn-secondary btn-export" id="btn-export-pca-jpg" title="JPG 이미지로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-image"></i> JPG</button>
+                                <button class="btn btn-secondary btn-export" id="btn-export-pca-pdf" title="PDF 파일로 내보내기" style="padding: 4px 10px; font-size: 12px; height: 32px;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="alert-box mb-20">
@@ -604,6 +631,9 @@
         </div>
     </div>
 
+    <!-- jsPDF & html2canvas for PDF and Image Exporting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- Application JavaScript -->
     <script src="app.js?v=3"></script>
 </body>

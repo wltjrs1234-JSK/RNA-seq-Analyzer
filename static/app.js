@@ -809,6 +809,64 @@ function initControls() {
             renderPathwayList(e.target.value);
         });
     }
+
+    // DEG Excel Export Binding
+    const btnExportExcel = document.getElementById("btn-export-deg-excel");
+    if (btnExportExcel) {
+        btnExportExcel.addEventListener("click", () => {
+            window.open(`${API_URL}/api/export_deg_excel`, '_blank');
+        });
+    }
+    
+    // Volcano / MA Plot Export Bindings
+    const btnExportVolcanoJpg = document.getElementById("btn-export-volcano-jpg");
+    const btnExportVolcanoPdf = document.getElementById("btn-export-volcano-pdf");
+    if (btnExportVolcanoJpg) {
+        btnExportVolcanoJpg.addEventListener("click", () => exportPlotlyChart("plotly-chart", "jpeg", "yeast_volcano_ma_plot"));
+    }
+    if (btnExportVolcanoPdf) {
+        btnExportVolcanoPdf.addEventListener("click", () => exportPlotlyChart("plotly-chart", "pdf", "yeast_volcano_ma_plot"));
+    }
+    
+    // Heatmap Export Bindings
+    const btnExportHeatmapJpg = document.getElementById("btn-export-heatmap-jpg");
+    const btnExportHeatmapPdf = document.getElementById("btn-export-heatmap-pdf");
+    if (btnExportHeatmapJpg) {
+        btnExportHeatmapJpg.addEventListener("click", () => exportPlotlyChart("plotly-heatmap", "jpeg", "yeast_expression_heatmap"));
+    }
+    if (btnExportHeatmapPdf) {
+        btnExportHeatmapPdf.addEventListener("click", () => exportPlotlyChart("plotly-heatmap", "pdf", "yeast_expression_heatmap"));
+    }
+    
+    // PCA Plot Export Bindings
+    const btnExportPcaJpg = document.getElementById("btn-export-pca-jpg");
+    const btnExportPcaPdf = document.getElementById("btn-export-pca-pdf");
+    if (btnExportPcaJpg) {
+        btnExportPcaJpg.addEventListener("click", () => exportPlotlyChart("pca-scatter-chart", "jpeg", "yeast_pca_plot"));
+    }
+    if (btnExportPcaPdf) {
+        btnExportPcaPdf.addEventListener("click", () => exportPlotlyChart("pca-scatter-chart", "pdf", "yeast_pca_plot"));
+    }
+    
+    // GO Enrichment Export Bindings
+    const btnExportGoJpg = document.getElementById("btn-export-go-jpg");
+    const btnExportGoPdf = document.getElementById("btn-export-go-pdf");
+    if (btnExportGoJpg) {
+        btnExportGoJpg.addEventListener("click", () => exportPlotlyChart("go-bar-chart", "jpeg", "yeast_go_enrichment_chart"));
+    }
+    if (btnExportGoPdf) {
+        btnExportGoPdf.addEventListener("click", () => exportPlotlyChart("go-bar-chart", "pdf", "yeast_go_enrichment_chart"));
+    }
+    
+    // KEGG Map Export Bindings
+    const btnExportKeggJpg = document.getElementById("btn-export-kegg-jpg");
+    const btnExportKeggPdf = document.getElementById("btn-export-kegg-pdf");
+    if (btnExportKeggJpg) {
+        btnExportKeggJpg.addEventListener("click", () => exportKeggMap("jpeg", "yeast_kegg_pathway_map"));
+    }
+    if (btnExportKeggPdf) {
+        btnExportKeggPdf.addEventListener("click", () => exportKeggMap("pdf", "yeast_kegg_pathway_map"));
+    }
 }
 
 function handleHeaderSort(key, thEl) {
@@ -2279,5 +2337,80 @@ function runGSEAAnalysis(termId, termName) {
     })
     .catch(err => {
         runningDiv.innerHTML = `<div class="text-center text-danger" style="padding-top: 100px;">오류: ${err.message}</div>`;
+    });
+}
+
+// ----------------------------------------------------------------------
+// 10. Data & Visual Chart Export Helpers (Excel, JPG, PDF)
+// ----------------------------------------------------------------------
+function exportPlotlyChart(elementId, format, filename) {
+    const gd = document.getElementById(elementId);
+    if (!gd || !gd.calcdata) {
+        alert("내보낼 차트 데이터가 존재하지 않습니다.");
+        return;
+    }
+    
+    if (format === 'jpeg') {
+        // Direct High-Resolution JPG Download via Plotly
+        Plotly.downloadImage(gd, {
+            format: 'jpeg',
+            filename: filename,
+            width: 1200,
+            height: 800
+        });
+    } else if (format === 'pdf') {
+        // Render to image dataURL, then encapsulate in Landscape jsPDF
+        Plotly.toImage(gd, {
+            format: 'jpeg',
+            width: 1200,
+            height: 800,
+            quality: 1
+        }).then(dataUrl => {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('landscape', 'px', [1200, 800]);
+            pdf.addImage(dataUrl, 'JPEG', 0, 0, 1200, 800);
+            pdf.save(`${filename}.pdf`);
+        }).catch(err => {
+            console.error(err);
+            alert("PDF 생성 중 오류가 발생했습니다: " + err.message);
+        });
+    }
+}
+
+function exportKeggMap(format, filename) {
+    const container = document.getElementById("kegg-map-container");
+    const wrapper = container.querySelector(".kegg-image-wrapper");
+    if (!wrapper) {
+        alert("선택 및 로드된 KEGG Pathway 지도가 없습니다.");
+        return;
+    }
+    
+    // Utilize html2canvas to capture exact DOM layout with highlights/colors
+    html2canvas(wrapper, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        scale: 2 // Double scale for high-definition publication resolution
+    }).then(canvas => {
+        if (format === 'jpeg') {
+            const link = document.createElement("a");
+            link.download = `${filename}.jpg`;
+            link.href = canvas.toDataURL("image/jpeg", 0.95);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else if (format === 'pdf') {
+            const imgData = canvas.toDataURL("image/jpeg", 1.0);
+            const imgWidth = canvas.width / 2; // Compensate scale: 2 for print dimensions
+            const imgHeight = canvas.height / 2;
+            
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF(imgWidth > imgHeight ? 'l' : 'p', 'px', [imgWidth, imgHeight]);
+            pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+            pdf.save(`${filename}.pdf`);
+        }
+    }).catch(err => {
+        console.error(err);
+        alert("KEGG 지도 캡처 및 내보내기 실패: " + err.message);
     });
 }
