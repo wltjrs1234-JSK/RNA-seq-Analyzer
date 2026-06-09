@@ -1514,11 +1514,13 @@ function runGOEnrichment() {
     const log2fcThresh = parseFloat(document.getElementById("log2fc-thresh").value) || 0;
     const pvalThresh = parseFloat(document.getElementById("pvalue-thresh").value) || 1.0;
     
-    // Select upregulated or downregulated locus tags based on threshold
+    // Select upregulated or downregulated locus tags based on threshold and stat-type
     const targetList = [];
+    const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
     gGenes.forEach(gene => {
+        const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
         const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
-        const passesPVal = !gIsReplicateMode || (gene.fdr <= pvalThresh);
+        const passesPVal = !gIsReplicateMode || (statVal !== null && statVal <= pvalThresh);
         
         if (passesLog2FC && passesPVal) {
             if (direction === "up" && gene.log2fc >= log2fcThresh) {

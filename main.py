@@ -229,13 +229,31 @@ def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
     # Use word-boundary aware regex matching to avoid false positives like "t" in "WT"
     import re as _re
     
-    # Strict word patterns: must appear as standalone token separated by _ - . space or number boundary
-    wt_patterns = [r"\bwt\b", r"\bcontrol\b", r"\bctrl\b", r"\bcon\b", r"\bwildtype\b", r"\bwild_type\b", r"\breference\b", r"\bref\b"]
-    mut_patterns = [r"\bmutant\b", r"\bmut\b", r"\bko\b", r"\btreatment\b", r"\btreat\b", r"\btarget\b", r"\boverexpression\b", r"\boe\b",
-                    r"(?:^|[_\-\.])m(?:[_\-\.]|$|\d)"]
+    # Robust patterns: must be surrounded by non-alphabetics or string boundaries to avoid false positives (e.g. 'weight' vs 'wt')
+    wt_patterns = [
+        r"(?:^|[^a-zA-Z])wt(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])control(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])ctrl(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])con(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])wildtype(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])wild_type(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])reference(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])ref(?:[^a-zA-Z]|$)"
+    ]
+    mut_patterns = [
+        r"(?:^|[^a-zA-Z])mutant(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])mut(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])ko(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])treatment(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])treat(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])target(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])overexpression(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])oe(?:[^a-zA-Z]|$)",
+        r"(?:^|[^a-zA-Z])m(?:[0-9]+|$)"
+    ]
 
-    wt_cols = []
-    mut_cols = []
+    wt_candidates = []
+    mut_candidates = []
 
     def matches_any(colname, patterns):
         cn = colname.lower()
@@ -246,11 +264,21 @@ def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
         is_mut = matches_any(col, mut_patterns)
 
         if is_wt and not is_mut:
-            wt_cols.append(col)
+            wt_candidates.append(col)
         elif is_mut and not is_wt:
-            mut_cols.append(col)
+            mut_candidates.append(col)
         elif is_wt and is_mut:
-            mut_cols.append(col)
+            mut_candidates.append(col)
+
+    # Smart filtering: If there are replicates AND summary columns (like AVG, Mean, Average),
+    # exclude summary columns from t-test list to prevent stat calculation break.
+    def filter_summary_cols(cols):
+        avg_patterns = ["avg", "mean", "average", "평균"]
+        reps = [c for c in cols if not any(p in c.lower() for p in avg_patterns)]
+        return reps if reps else cols
+
+    wt_cols = filter_summary_cols(wt_candidates)
+    mut_cols = filter_summary_cols(mut_candidates)
             
     # Fallback splitting if we couldn't classify them
     unclassified = [c for c in numeric_cols if c not in wt_cols and c not in mut_cols]
@@ -322,11 +350,7 @@ def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
         }
         
         if is_replicate_mode:
-            # Stabilize variance by applying Log2 transformation to expression values
-            wt_vals_log = [np.log2(v + 1.0) for v in wt_vals]
-            mut_vals_log = [np.log2(v + 1.0) for v in mut_vals]
-            
-            t_stat, p_val = stats.ttest_ind(mut_vals_log, wt_vals_log, equal_var=False)
+            t_stat, p_val = stats.ttest_ind(mut_vals, wt_vals, equal_var=False)
             if np.isnan(p_val):
                 p_val = 1.0
             gene_item["pvalue"] = round(float(p_val), 6)
