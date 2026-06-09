@@ -893,8 +893,29 @@ def get_string_network(limit: int = 50, score: int = 400):
         genes = json.load(f)
         
     degs = [g for g in genes if g["locus_tag"]]
-    degs = sorted(degs, key=lambda x: abs(x["log2fc"]), reverse=True)
-    top_degs = degs[:limit]
+    
+    # 발현 증가(Upregulated)와 발현 감소(Downregulated) 유전자군을 분리
+    up_degs = [g for g in degs if g["log2fc"] > 0]
+    down_degs = [g for g in degs if g["log2fc"] < 0]
+    
+    # 각각의 절대값 log2fc 역순 정렬
+    up_sorted = sorted(up_degs, key=lambda x: abs(x["log2fc"]), reverse=True)
+    down_sorted = sorted(down_degs, key=lambda x: abs(x["log2fc"]), reverse=True)
+    
+    # 50:50 비율로 균형 선별 (한쪽이 부족하면 다른 쪽에서 메움)
+    half = limit // 2
+    if len(up_sorted) < half:
+        selected_up = up_sorted
+        selected_down = down_sorted[:(limit - len(selected_up))]
+    elif len(down_sorted) < (limit - half):
+        selected_down = down_sorted
+        selected_up = up_sorted[:(limit - len(selected_down))]
+    else:
+        selected_up = up_sorted[:half]
+        selected_down = down_sorted[:(limit - half)]
+        
+    top_degs = selected_up + selected_down
+    top_degs = sorted(top_degs, key=lambda x: abs(x["log2fc"]), reverse=True)
     
     if not top_degs:
         return {"nodes": [], "edges": []}
