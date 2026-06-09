@@ -1830,6 +1830,7 @@ function renderPCAPlot() {
             margin: { l: 60, r: 40, t: 60, b: 60 }
         };
         
+        chartDiv.innerHTML = "";
         Plotly.newPlot('pca-scatter-chart', [traceWT, traceMut], layout, {responsive: true});
     })
     .catch(err => {
@@ -2080,6 +2081,7 @@ function runGSEAAnalysis(termId, termName) {
             hovermode: 'closest'
         };
         
+        runningDiv.innerHTML = "";
         Plotly.newPlot('gsea-running-plot', [traceES, traceZero], runningLayout, {responsive: true});
         
         const barcodeX = barcodes.map(b => b.rank);
@@ -2106,6 +2108,7 @@ function runGSEAAnalysis(termId, termName) {
             margin: { l: 60, r: 20, t: 30, b: 30 }
         };
         
+        barcodeDiv.innerHTML = "";
         Plotly.newPlot('gsea-barcode-plot', [traceBarcode], barcodeLayout, {responsive: true});
     })
     .catch(err => {

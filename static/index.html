@@ -420,11 +420,31 @@
                                 <p class="alert-text">선택한 유전자군에 대해 <strong>SGD Yeast GO Slim</strong> 데이터셋을 기반으로 Hypergeometric test(초기하 분포 통계 검정)를 수행하여 통계적으로 유의미한 기능 범주를 도출합니다.</p>
                             </div>
                             
-                            <!-- GO Enrichment Grouped Bar Chart Visualizer -->
-                            <div class="go-chart-container" id="go-chart-container" style="display: none; margin-bottom: 24px; min-height: 450px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px;">
-                                <div id="go-bar-chart" style="width: 100%; height: 450px;"></div>
-                            </div>
-                            
+                            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; margin-bottom: 24px;">
+                                <div class="table-responsive max-height-table">
+                                    <table class="data-table" id="go-table">
+                                        <thead>
+                                            <tr>
+                                                <th>GO ID</th>
+                                                <th>분류 (Aspect)</th>
+                                                <th>기능 범주 (Term Name)</th>
+                                                <th class="stat-header">매칭 (k)</th>
+                                                <th class="stat-header">전체 (M)</th>
+                                                <th class="stat-header">p-value</th>
+                                                <th class="stat-header">FDR (BH)</th>
+                                                <th>매칭 유전자 목록</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="go-table-body">
+                                            <tr>
+                                                <td colspan="8" class="text-center text-muted">분석 실행 버튼을 누르시면 검정이 시작됩니다.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="chart-box" id="go-chart-container" style="display: none; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; min-height: 450px;">
+                                    <div id="go-bar-chart" style="width: 100%; height: 450px;"></div>
+                                </div>
                             </div>
 
                             <!-- Protein Domain Enrichment Section -->
