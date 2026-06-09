@@ -1245,3 +1245,22 @@ body {
 .fallback-excel-table tr:hover td {
     background-color: #f1f5f9;
 }
+
+/* KEGG Node Highlighting styles */
+.kegg-node-overlay.highlight-active {
+    border: 3px solid #ff3366 !important;
+    box-shadow: 0 0 10px #ff3366, 0 0 20px #ff3366, inset 0 0 5px #ff3366 !important;
+    z-index: 100 !important;
+    animation: kegg-node-pulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes kegg-node-pulse {
+    0% {
+        transform: scale(1.0);
+        box-shadow: 0 0 8px #ff3366, 0 0 15px #ff3366;
+    }
+    100% {
+        transform: scale(1.06);
+        box-shadow: 0 0 18px #ff3366, 0 0 35px #ff3366;
+    }
+}

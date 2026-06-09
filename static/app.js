@@ -1529,6 +1529,40 @@ function renderPathwayImageViewer(data) {
                 const [x1, y1, x2, y2] = coordsArr;
                 const overlay = document.createElement("div");
                 overlay.className = "kegg-node-overlay";
+                
+                // Check if current search query matches this node
+                const searchInput = document.getElementById("kegg-search-gene");
+                const currentQuery = searchInput ? searchInput.value.trim().toUpperCase() : "";
+                
+                let isMatched = false;
+                if (currentQuery) {
+                    const genesList = area.gene.toUpperCase().split("+");
+                    if (genesList.some(g => g === currentQuery)) {
+                        isMatched = true;
+                    }
+                    if (area.title && area.title.toUpperCase().includes(currentQuery)) {
+                        isMatched = true;
+                    }
+                    
+                    // Support check by related genes from full dataset
+                    const matchedGeneInData = gGenes.find(g => 
+                        g.locus_tag.toUpperCase() === currentQuery || 
+                        g.gene_symbol.toUpperCase() === currentQuery
+                    );
+                    if (matchedGeneInData) {
+                        const targetLocus = matchedGeneInData.locus_tag.toUpperCase();
+                        const targetSymbol = matchedGeneInData.gene_symbol.toUpperCase();
+                        if (genesList.some(g => g === targetLocus || g === targetSymbol) ||
+                            (area.title && (area.title.toUpperCase().includes(targetLocus) || area.title.toUpperCase().includes(targetSymbol)))) {
+                            isMatched = true;
+                        }
+                    }
+                }
+                
+                if (isMatched) {
+                    overlay.classList.add("highlight-active");
+                }
+                
                 overlay.style.position = "absolute";
                 overlay.style.left = `${x1}px`;
                 overlay.style.top = `${y1}px`;
