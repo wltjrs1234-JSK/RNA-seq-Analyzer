@@ -2345,36 +2345,105 @@ function runGSEAAnalysis(termId, termName) {
 // ----------------------------------------------------------------------
 function exportPlotlyChart(elementId, format, filename) {
     const gd = document.getElementById(elementId);
-    if (!gd || !gd.calcdata) {
+    if (!gd || !gd.data || gd.data.length === 0) {
         alert("내보낼 차트 데이터가 존재하지 않습니다.");
         return;
     }
     
-    if (format === 'jpeg') {
-        // Direct High-Resolution JPG Download via Plotly
-        Plotly.downloadImage(gd, {
-            format: 'jpeg',
-            filename: filename,
-            width: 1200,
-            height: 800
-        });
-    } else if (format === 'pdf') {
-        // Render to image dataURL, then encapsulate in Landscape jsPDF
-        Plotly.toImage(gd, {
-            format: 'jpeg',
-            width: 1200,
-            height: 800,
-            quality: 1
-        }).then(dataUrl => {
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF('landscape', 'px', [1200, 800]);
-            pdf.addImage(dataUrl, 'JPEG', 0, 0, 1200, 800);
-            pdf.save(`${filename}.pdf`);
-        }).catch(err => {
-            console.error(err);
-            alert("PDF 생성 중 오류가 발생했습니다: " + err.message);
-        });
+    // Deep copy original layout properties to restore them later
+    const originalLayout = JSON.parse(JSON.stringify(gd.layout));
+    
+    // Create a temporary light-theme-friendly layout for high-quality publication export
+    const exportLayout = {
+        ...gd.layout,
+        paper_bgcolor: '#ffffff',
+        plot_bgcolor: '#ffffff'
+    };
+    
+    // Force title font color to be dark
+    if (exportLayout.title) {
+        if (typeof exportLayout.title === 'string') {
+            exportLayout.title = { text: exportLayout.title, font: { color: '#0f172a' } };
+        } else {
+            exportLayout.title = {
+                ...exportLayout.title,
+                font: exportLayout.title.font ? { ...exportLayout.title.font, color: '#0f172a' } : { color: '#0f172a' }
+            };
+        }
     }
+    
+    // Force general font color to dark grey
+    if (exportLayout.font) {
+        exportLayout.font = { ...exportLayout.font, color: '#1e293b' };
+    } else {
+        exportLayout.font = { color: '#1e293b' };
+    }
+    
+    // Adjust X axis colors (dark labels and grid lines)
+    if (exportLayout.xaxis) {
+        exportLayout.xaxis = {
+            ...exportLayout.xaxis,
+            gridcolor: '#e2e8f0',
+            zerolinecolor: '#cbd5e1',
+            tickfont: exportLayout.xaxis.tickfont ? { ...exportLayout.xaxis.tickfont, color: '#334155' } : { color: '#334155' },
+            title: exportLayout.xaxis.title ? (typeof exportLayout.xaxis.title === 'string' ? { text: exportLayout.xaxis.title, font: { color: '#0f172a' } } : { ...exportLayout.xaxis.title, font: { color: '#0f172a', ...exportLayout.xaxis.title.font } }) : undefined
+        };
+    }
+    
+    // Adjust Y axis colors (dark labels and grid lines)
+    if (exportLayout.yaxis) {
+        exportLayout.yaxis = {
+            ...exportLayout.yaxis,
+            gridcolor: '#e2e8f0',
+            zerolinecolor: '#cbd5e1',
+            tickfont: exportLayout.yaxis.tickfont ? { ...exportLayout.yaxis.tickfont, color: '#334155' } : { color: '#334155' },
+            title: exportLayout.yaxis.title ? (typeof exportLayout.yaxis.title === 'string' ? { text: exportLayout.yaxis.title, font: { color: '#0f172a' } } : { ...exportLayout.yaxis.title, font: { color: '#0f172a', ...exportLayout.yaxis.title.font } }) : undefined
+        };
+    }
+    
+    // Adjust Legend fonts
+    if (exportLayout.legend) {
+        exportLayout.legend = {
+            ...exportLayout.legend,
+            font: exportLayout.legend.font ? { ...exportLayout.legend.font, color: '#1e293b' } : { color: '#1e293b' }
+        };
+    }
+    
+    // Temporarily apply the light layout, capture the image, and revert
+    Plotly.relayout(gd, exportLayout).then(() => {
+        if (format === 'jpeg') {
+            Plotly.downloadImage(gd, {
+                format: 'jpeg',
+                filename: filename,
+                width: 1200,
+                height: 800,
+                setBackground: '#ffffff'
+            }).then(() => {
+                Plotly.relayout(gd, originalLayout);
+            }).catch(err => {
+                Plotly.relayout(gd, originalLayout);
+                console.error(err);
+            });
+        } else if (format === 'pdf') {
+            Plotly.toImage(gd, {
+                format: 'jpeg',
+                width: 1200,
+                height: 800,
+                quality: 1,
+                setBackground: '#ffffff'
+            }).then(dataUrl => {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('landscape', 'px', [1200, 800]);
+                pdf.addImage(dataUrl, 'JPEG', 0, 0, 1200, 800);
+                pdf.save(`${filename}.pdf`);
+                Plotly.relayout(gd, originalLayout);
+            }).catch(err => {
+                Plotly.relayout(gd, originalLayout);
+                console.error(err);
+                alert("PDF 생성 중 오류가 발생했습니다: " + err.message);
+            });
+        }
+    });
 }
 
 function exportKeggMap(format, filename) {
@@ -2385,13 +2454,37 @@ function exportKeggMap(format, filename) {
         return;
     }
     
-    // Utilize html2canvas to capture exact DOM layout with highlights/colors
+    // Save original inline styles to restore after capture
+    const originalWidthStyle = wrapper.style.width;
+    const originalHeightStyle = wrapper.style.height;
+    const originalOverflowStyle = wrapper.style.overflow;
+    
+    // Get full scrollable/renderable dimensions of the pathway map
+    const fullWidth = wrapper.scrollWidth;
+    const fullHeight = wrapper.scrollHeight;
+    
+    // Temporarily force wrapper size to fit the entire map to prevent clipping
+    wrapper.style.width = `${fullWidth}px`;
+    wrapper.style.height = `${fullHeight}px`;
+    wrapper.style.overflow = "visible";
+    
     html2canvas(wrapper, {
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
+        width: fullWidth,
+        height: fullHeight,
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
         scale: 2 // Double scale for high-definition publication resolution
     }).then(canvas => {
+        // Restore styles immediately
+        wrapper.style.width = originalWidthStyle;
+        wrapper.style.height = originalHeightStyle;
+        wrapper.style.overflow = originalOverflowStyle;
+        
         if (format === 'jpeg') {
             const link = document.createElement("a");
             link.download = `${filename}.jpg`;
@@ -2401,7 +2494,7 @@ function exportKeggMap(format, filename) {
             document.body.removeChild(link);
         } else if (format === 'pdf') {
             const imgData = canvas.toDataURL("image/jpeg", 1.0);
-            const imgWidth = canvas.width / 2; // Compensate scale: 2 for print dimensions
+            const imgWidth = canvas.width / 2; // Compensate scale: 2
             const imgHeight = canvas.height / 2;
             
             const { jsPDF } = window.jspdf;
@@ -2410,6 +2503,10 @@ function exportKeggMap(format, filename) {
             pdf.save(`${filename}.pdf`);
         }
     }).catch(err => {
+        // Restore styles on error
+        wrapper.style.width = originalWidthStyle;
+        wrapper.style.height = originalHeightStyle;
+        wrapper.style.overflow = originalOverflowStyle;
         console.error(err);
         alert("KEGG 지도 캡처 및 내보내기 실패: " + err.message);
     });
