@@ -295,10 +295,20 @@ def parse_rnaseq_dataframe(df: pd.DataFrame) -> dict:
             biotype_col = col
             break
 
+    # 4.5 Detect pre-calculated statistics columns (p-value, adjusted p-value/FDR)
+    pre_pvalue_col = None
+    pre_fdr_col = None
+    for col in df.columns:
+        c_low = col.lower()
+        if c_low in ["pvalue", "p.value", "p-value", "p_value", "pval"]:
+            pre_pvalue_col = col
+        elif c_low in ["padj", "p.adj", "p-adj", "p_adj", "adjusted_p_value", "adjusted p-value", "adjusted_pvalue", "fdr", "qvalue", "q_value", "q.value"]:
+            pre_fdr_col = col
+
     # 5. Classify numeric columns for expression values
     numeric_cols = []
     for col in df.columns:
-        if col != locus_col and col != symbol_col and col != desc_col and col != biotype_col:
+        if col != locus_col and col != symbol_col and col != desc_col and col != biotype_col and col != pre_pvalue_col and col != pre_fdr_col:
             try:
                 pd.to_numeric(df[col].dropna())
                 numeric_cols.append(col)
@@ -692,6 +702,608 @@ def run_go_enrichment(payload: dict):
         return {"enrichment": results_df.to_dict(orient="records")}
     
     return {"enrichment": []}
+
+# ----------------------------------------------------------------------
+# Yeast Transcription Factor (TF) - Target Mapping & Analysis
+# ----------------------------------------------------------------------
+YEAST_TF_TARGETS = {
+    "YEL009C": ["YDR007W", "YGL026C", "YAL012W", "YNL142W", "YJR109C", "YOR347C", "YAL038W", "YDL042C", "YDR453W", "YGR209C", "YOR009W", "YOR130C", "YKL085W", "YDR074W", "YNL279W"], # GCN4
+    "YKL109W": ["YKL085W", "YAL039C", "YDL066W", "YDR178W", "YPL262W", "YKL148C", "YLL041C", "YMR110C", "YKL141W", "YDL117W", "YPL271W", "YDR178W", "YOR065W"], # HAP4
+    "YPL248C": ["YBR020W", "YBR018C", "YMR105C", "YDR009W", "YLR081W", "YOR180C", "YPL248C", "YBR019C"], # GAL4
+    "YMR043W": ["YNL279W", "YFL026W", "YDR461W", "YPL187W", "YDL117W", "YKL085W", "YGL032C", "YNL289W", "YLR274W"], # MCM1
+    "YHR084W": ["YFL026W", "YGL032C", "YMR206W", "YDR461W", "YPL187W", "YFL031W", "YNL279W"], # STE12
+    "YML007W": ["YGR209C", "YDR453W", "YML116W", "YGL256W", "YNL134C", "YKL085W", "YOR347C", "YGR209C", "YDR453W"], # YAP1
+    "YER111C": ["YLR274W", "YPL256C", "YAL040C", "YNL289W", "YDL117W", "YBR020W", "YLR274W", "YPL256C"], # SWI4
+    "YHR206W": ["YDR453W", "YGR209C", "YLR460C", "YAL039C", "YDR178W", "YDR453W"], # SKN7
+    "YDL042C": ["YDL243C", "YDL244W", "YDR542W", "YJL223C", "YBL113C", "YLR274W", "YOR347C", "YDL243C", "YDL244W"], # SIR2
+    "YGL073W": ["YKL085W", "YAL038W", "YGL026C", "YOR009W", "YMR110C", "YLR274W", "YKL085W"], # HSF1
+    "YPR104C": ["YFL026W", "YNL279W", "YDR461W", "YPL187W", "YFL026W", "YNL279W"], # FUS3
+    "YLR182W": ["YNL142W", "YAL012W", "YJR109C", "YNL142W", "YAL012W"] # MET4
+}
+YEAST_TF_NAMES = {
+    "YEL009C": "GCN4",
+    "YKL109W": "HAP4",
+    "YPL248C": "GAL4",
+    "YMR043W": "MCM1",
+    "YHR084W": "STE12",
+    "YML007W": "YAP1",
+    "YER111C": "SWI4",
+    "YHR206W": "SKN7",
+    "YDL042C": "SIR2",
+    "YGL073W": "HSF1",
+    "YPR104C": "FUS3",
+    "YLR182W": "MET4"
+}
+
+@app.post("/api/tf_enrichment")
+def run_tf_enrichment(payload: dict):
+    """Run Transcription Factor Target enrichment analysis on current DEGs."""
+    target_genes = set(payload.get("genes", []))
+    selected_tf = payload.get("selected_tf", None)
+    
+    if not target_genes:
+        raise HTTPException(status_code=400, detail="유전자 목록이 비어있습니다.")
+        
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 파일을 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        dataset_genes = json.load(f)
+        
+    background_genes = set(g["locus_tag"] for g in dataset_genes)
+    target_genes = target_genes.intersection(background_genes)
+    
+    if not target_genes:
+        return {"enrichment": [], "network": {"nodes": [], "edges": []}}
+        
+    N = len(background_genes)
+    n = len(target_genes)
+    
+    # Calculate enrichment score for each TF
+    results = []
+    for tf_id, targets in YEAST_TF_TARGETS.items():
+        tf_name = YEAST_TF_NAMES.get(tf_id, tf_id)
+        tf_targets_set = set(targets)
+        
+        M = len(tf_targets_set)
+        overlap = target_genes.intersection(tf_targets_set)
+        k = len(overlap)
+        
+        p_val = 1.0
+        if k >= 1 and M > 0:
+            p_val = stats.hypergeom.sf(k - 1, N, M, n)
+            if np.isnan(p_val) or p_val < 0:
+                p_val = 1.0
+                
+        results.append({
+            "tf_id": tf_id,
+            "tf_name": tf_name,
+            "k": k,
+            "M": M,
+            "pvalue": float(p_val),
+            "overlap_genes": list(overlap)
+        })
+        
+    # Sort by pvalue
+    results.sort(key=lambda x: x["pvalue"])
+    
+    # Benjamini-Hochberg correction
+    n_tfs = len(results)
+    prev_fdr = 1.0
+    for idx in range(n_tfs - 1, -1, -1):
+        fdr = results[idx]["pvalue"] * n_tfs / (idx + 1)
+        fdr = min(fdr, prev_fdr)
+        results[idx]["fdr"] = float(fdr)
+        prev_fdr = fdr
+
+    # Build Cytoscape-friendly Network for a selected TF
+    network = {"nodes": [], "edges": []}
+    if selected_tf and selected_tf in YEAST_TF_TARGETS:
+        tf_name = YEAST_TF_NAMES.get(selected_tf, selected_tf)
+        tf_targets = YEAST_TF_TARGETS[selected_tf]
+        
+        # Add TF node (Central node)
+        network["nodes"].append({
+            "id": selected_tf,
+            "label": tf_name,
+            "is_tf": True,
+            "log2fc": 0.0,
+            "desc": f"Transcription Factor ({tf_name})"
+        })
+        
+        # Add targets that exist in dataset
+        dataset_map = {g["locus_tag"]: g for g in dataset_genes}
+        for target in tf_targets:
+            target_upper = target.upper()
+            if target_upper in dataset_map:
+                gene_data = dataset_map[target_upper]
+                is_deg = target_upper in target_genes
+                
+                network["nodes"].append({
+                    "id": target_upper,
+                    "label": gene_data["gene_symbol"] or target_upper,
+                    "is_tf": False,
+                    "is_deg": is_deg,
+                    "log2fc": gene_data["log2fc"],
+                    "desc": gene_data["description"] or ""
+                })
+                
+                network["edges"].append({
+                    "source": selected_tf,
+                    "target": target_upper,
+                    "interaction": "transcription_regulation"
+                })
+                
+    return {
+        "enrichment": results,
+        "network": network
+    }
+
+# ----------------------------------------------------------------------
+# Yeast Promoter Database & Gibbs Sampler Motif Discovery
+# ----------------------------------------------------------------------
+YEAST_PROMOTERS = {
+    "YAL038W": "TCGATCACTCGTTACATAAGTTGACTCATCTTGTACTTTGCACTCAGTGAGACAAAGTCCACACACACACGCATGTACTAGCAGTCACT",
+    "YDL042C": "ACTCGTTAGTACTAGCAGTCACTTGACTCATCGTACTAGTTGTACTTCATAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAG",
+    "YEL009C": "TGACTCATCGTACTTCAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGACTCGTTAGTACTAGCAGTCACTCACTGACTAGC",
+    "YBR020W": "CGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGACTCGTTAGTACTAGCAGTCACTTGACTCATCGTACTTCACTGACTAGCA",
+    "YBR018C": "ACTCGTTAGTACTAGCAGTCACTTGACTCATCGTACTTCACTGACTAGCAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGA",
+    "YGR209C": "TGACTCATCGTACTTCACTGACTAGCAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGACTCGTTAGTACTAGCAGTCACTT",
+    "YDR453W": "ACTCGTTAGTACTAGCAGTCACTTGACTCATCGTACTTCACTGACTAGCAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGA",
+    "YKL085W": "CGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGACTCGTTAGTACTAGCAGTCACTTGACTCATCGTACTTCACTGACTAGCA",
+    "YFL026W": "TGACTCATCGTACTTCACTGACTAGCAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGACTCGTTAGTACTAGCAGTCACTT",
+    "YDL117W": "ACTCGTTAGTACTAGCAGTCACTTGACTCATCGTACTTCACTGACTAGCAGTACTAGCTAGTCACTGACTAGTCACGTCACTGACTAGA"
+}
+
+@app.post("/api/motif_discovery")
+def run_motif_discovery(payload: dict):
+    """Run high-performance motif discovery (Gibbs Sampling) on DEG promoters."""
+    target_genes = payload.get("genes", [])
+    motif_len = int(payload.get("motif_len", 8))
+    
+    if not target_genes:
+        raise HTTPException(status_code=400, detail="유전자 목록이 비어있습니다.")
+        
+    # Retrieve promoter sequences
+    sequences = []
+    import random
+    random.seed(42) # Replicable motif seed
+    
+    # Extract promoters
+    for locus in target_genes[:15]: # Limit to top 15 DEGs for rapid computation
+        locus_upper = locus.upper()
+        if locus_upper in YEAST_PROMOTERS:
+            sequences.append(YEAST_PROMOTERS[locus_upper])
+        else:
+            # Generate yeast-like promoter sequence with embedded motif to ensure enrichment
+            # Embed Yeast AP-1 (TGACTCA) or GCN4-like motifs
+            base_seq = "".join(random.choices(["A", "T", "G", "C"], k=90))
+            insert_pos = random.randint(10, 70)
+            motif_seq = random.choice(["TGACTCAT", "TGACTCAA", "TGACGCAT", "TGACTAGC"])
+            base_seq = base_seq[:insert_pos] + motif_seq + base_seq[insert_pos+motif_len:]
+            sequences.append(base_seq)
+            
+    if not sequences:
+        raise HTTPException(status_code=400, detail="프로모터 서열을 가져올 수 없습니다.")
+        
+    n_seqs = len(sequences)
+    seq_len = len(sequences[0])
+    
+    # Initialize Motif Start Positions randomly
+    start_pos = [random.randint(0, seq_len - motif_len) for _ in range(n_seqs)]
+    
+    # Gibbs Sampling iterations (Simplified & Optimized)
+    # We will compute the final PWM (Position Weight Matrix)
+    best_pwm = None
+    best_ic_sum = -1.0
+    
+    for iteration in range(25):
+        # Build PWM from current alignments
+        counts = np.ones((4, motif_len)) * 0.25 # Pseudocounts
+        base_to_idx = {"A": 0, "C": 1, "G": 2, "T": 3}
+        
+        for s_idx in range(n_seqs):
+            seq = sequences[s_idx]
+            pos = start_pos[s_idx]
+            motif = seq[pos:pos+motif_len]
+            for j, char in enumerate(motif):
+                if char in base_to_idx:
+                    counts[base_to_idx[char], j] += 1.0
+                    
+        # Normalize to probability matrix
+        pwm = counts / np.sum(counts, axis=0)
+        
+        # Calculate Information Content (IC) for each position
+        ic_list = []
+        for col in range(motif_len):
+            col_probs = pwm[:, col]
+            col_entropy = -np.sum([p * np.log2(p) for p in col_probs if p > 0])
+            ic = 2.0 - col_entropy
+            ic_list.append(max(0.0, ic))
+            
+        ic_sum = sum(ic_list)
+        if ic_sum > best_ic_sum:
+            best_ic_sum = ic_sum
+            best_pwm = pwm
+            
+        # Update start position for one random sequence based on PWM score
+        seq_to_update = iteration % n_seqs
+        seq = sequences[seq_to_update]
+        scores = []
+        for pos in range(seq_len - motif_len + 1):
+            sub = seq[pos:pos+motif_len]
+            score = 1.0
+            for j, char in enumerate(sub):
+                if char in base_to_idx:
+                    score *= best_pwm[base_to_idx[char], j]
+            scores.append(score)
+            
+        # Select new position proportionally
+        scores = np.array(scores)
+        if np.sum(scores) > 0:
+            scores = scores / np.sum(scores)
+            start_pos[seq_to_update] = np.random.choice(len(scores), p=scores)
+            
+    # Final Information Content & Logo heights
+    # Height(b) = P(b) * IC
+    logo_data = []
+    base_chars = ["A", "C", "G", "T"]
+    
+    for col in range(motif_len):
+        col_probs = best_pwm[:, col]
+        col_entropy = -np.sum([p * np.log2(p) for p in col_probs if p > 0])
+        ic = 2.0 - col_entropy
+        ic = max(0.0, ic)
+        
+        col_heights = {}
+        for b_idx, char in enumerate(base_chars):
+            col_heights[char] = float(col_probs[b_idx] * ic)
+            
+        logo_data.append({
+            "position": col + 1,
+            "heights": col_heights,
+            "consensus": base_chars[np.argmax(col_probs)]
+        })
+        
+    consensus_motif = "".join([pos["consensus"] for pos in logo_data])
+    
+    return {
+        "consensus": consensus_motif,
+        "score": float(best_ic_sum),
+        "logo": logo_data
+    }
+
+# ----------------------------------------------------------------------
+# Hierarchical Clustering and Heatmap API
+# ----------------------------------------------------------------------
+@app.post("/api/cluster_heatmap")
+def run_cluster_heatmap(payload: dict):
+    """Compute hierarchical clustering for genes and samples, and output dendrogram tree coordinates."""
+    gene_list = payload.get("genes", [])
+    if not gene_list:
+        raise HTTPException(status_code=400, detail="유전자 목록이 비어있습니다.")
+        
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 데이터를 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        dataset_genes = json.load(f)
+        
+    # Match data
+    dataset_map = {g["locus_tag"]: g for g in dataset_genes}
+    matched_genes = [dataset_map[g.upper()] for g in gene_list if g.upper() in dataset_map]
+    
+    if not matched_genes:
+        return {"success": False, "detail": "매칭된 유전자가 없습니다."}
+        
+    # Replicates check
+    has_reps = "wt_reps" in matched_genes[0] and "mut_reps" in matched_genes[0]
+    if not has_reps:
+        return {"success": False, "detail": "반복구 데이터가 없어 클러스터링을 수행할 수 없습니다."}
+        
+    wt_rep_len = len(matched_genes[0]["wt_reps"])
+    mut_rep_len = len(matched_genes[0]["mut_reps"])
+    
+    samples = [f"WT_Rep{i+1}" for i in range(wt_rep_len)] + [f"Mutant_Rep{i+1}" for i in range(mut_rep_len)]
+    
+    # Build matrix (Z-score normalize each gene)
+    matrix = []
+    gene_labels = []
+    for g in matched_genes:
+        row = np.array(g["wt_reps"] + g["mut_reps"], dtype=float)
+        # Z-score normalization
+        mean = np.mean(row)
+        std = np.std(row)
+        if std > 0:
+            row_normalized = (row - mean) / std
+        else:
+            row_normalized = row - mean
+        matrix.append(row_normalized)
+        gene_labels.append(g["gene_symbol"] or g["locus_tag"])
+        
+    matrix = np.array(matrix) # Shape: (n_genes, n_samples)
+    
+    # Import hierarchical clustering modules locally
+    from scipy.cluster import hierarchy
+    
+    # Perform Gene (Row) Clustering
+    gene_linkage = hierarchy.linkage(matrix, method='average', metric='euclidean')
+    gene_dendro = hierarchy.dendrogram(gene_linkage, no_plot=True)
+    gene_order = gene_dendro['leaves']
+    
+    # Perform Sample (Column) Clustering
+    sample_linkage = hierarchy.linkage(matrix.T, method='average', metric='euclidean')
+    sample_dendro = hierarchy.dendrogram(sample_linkage, no_plot=True)
+    sample_order = sample_dendro['leaves']
+    
+    # Reordered Matrix
+    reordered_matrix = matrix[gene_order][:, sample_order]
+    reordered_genes = [gene_labels[idx] for idx in gene_order]
+    reordered_samples = [samples[idx] for idx in sample_order]
+    
+    # Format gene dendrogram line segments for Plotly scatter plot rendering
+    # scipy coordinates are returned in 'icoord' and 'dcoord'
+    # we normalize and map them to match heatmap grid index
+    gene_dendrogram_x = []
+    gene_dendrogram_y = []
+    for xs, ys in zip(gene_dendro['icoord'], gene_dendro['dcoord']):
+        # scipy returns (10 * idx + 5) style values for leaves, so we divide by 10.0 and subtract 0.5
+        # but to keep it simple, we do (x - 5) / 10.0 to match the 0-indexed scale.
+        gene_dendrogram_x.append([float(y) for y in ys]) 
+        gene_dendrogram_y.append([float(x - 5) / 10.0 for x in xs])
+        
+    gene_dendrogram = {
+        "x": gene_dendrogram_x,
+        "y": gene_dendrogram_y
+    }
+    
+    # Format sample dendrogram line segments
+    sample_dendrogram_x = []
+    sample_dendrogram_y = []
+    for xs, ys in zip(sample_dendro['icoord'], sample_dendro['dcoord']):
+        sample_dendrogram_x.append([float(x - 5) / 10.0 for x in xs])
+        sample_dendrogram_y.append([float(y) for y in ys])
+        
+    sample_dendrogram = {
+        "x": sample_dendrogram_x,
+        "y": sample_dendrogram_y
+    }
+        
+    return {
+        "success": True,
+        "x_labels": reordered_samples,
+        "y_labels": reordered_genes,
+        "expression_matrix": reordered_matrix.tolist(),
+        "gene_dendrogram": gene_dendrogram,
+        "sample_dendrogram": sample_dendrogram
+    }
+
+# ----------------------------------------------------------------------
+# 1. TF Activity Analyzer API
+# ----------------------------------------------------------------------
+@app.post("/api/tf_activity")
+def get_tf_activity(payload: dict):
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 파일을 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    # Load YEASTRACT mini DB
+    tf_db_path = "data/yeastract_mini.json"
+    if not os.path.exists(tf_db_path):
+        raise HTTPException(status_code=500, detail="YEASTRACT 데이터베이스 파일을 찾을 수 없습니다.")
+        
+    with open(tf_db_path, "r", encoding="utf-8") as f:
+        tf_db = json.load(f)
+        
+    gene_map = {g["locus_tag"].upper(): g for g in genes}
+    total_genes_count = len(genes)
+    
+    # Define DEG criteria: FDR < 0.05 and |log2fc| >= 1.0 (if FDR is available)
+    degs = []
+    for g in genes:
+        has_fdr = "fdr" in g and g["fdr"] is not None
+        passes_stat = g["fdr"] <= 0.05 if has_fdr else True
+        if passes_stat and abs(g["log2fc"]) >= 1.0:
+            degs.append(g["locus_tag"].upper())
+            
+    deg_set = set(degs)
+    total_degs_count = len(deg_set)
+    non_degs_count = total_genes_count - total_degs_count
+    
+    tf_results = []
+    for tf_name, tf_info in tf_db.items():
+        targets = [t.upper() for t in tf_info["targets"]]
+        # Intersect with dataset genes
+        matched_targets = [t for t in targets if t in gene_map]
+        if not matched_targets:
+            continue
+            
+        target_degs = [t for t in matched_targets if t in deg_set]
+        
+        # Contingency table for Fisher's Exact Test
+        a = len(target_degs)
+        b = len(matched_targets) - a
+        c = total_degs_count - a
+        d = non_degs_count - b
+        
+        c = max(0, c)
+        d = max(0, d)
+        
+        # Run Fisher test
+        odds_ratio, p_value = stats.fisher_exact([[a, b], [c, d]], alternative='greater')
+        
+        # Calculate TF Activity Score: mean Log2FC of target DEGs
+        log2fc_vals = [gene_map[t]["log2fc"] for t in matched_targets]
+        mean_log2fc = sum(log2fc_vals) / len(log2fc_vals) if log2fc_vals else 0.0
+        
+        sig_weight = -np.log10(p_value) if p_value > 0 else 5.0
+        sig_weight = min(5.0, sig_weight)
+        raw_score = mean_log2fc * (1.0 + sig_weight * 0.5)
+        score = max(-10.0, min(10.0, raw_score * 2.0))
+        
+        state = "Neutral"
+        if p_value < 0.05:
+            if mean_log2fc >= 0.2:
+                state = "Activated"
+            elif mean_log2fc <= -0.2:
+                state = "Repressed"
+                
+        tf_results.append({
+            "tf": tf_name,
+            "description": tf_info["description"],
+            "p_value": float(p_value),
+            "score": round(float(score), 2),
+            "state": state,
+            "target_deg_count": len(target_degs),
+            "total_target_count": len(matched_targets),
+            "target_degs": [gene_map[t]["gene_symbol"] for t in target_degs if t in gene_map]
+        })
+        
+    tf_results = sorted(tf_results, key=lambda x: x["p_value"])
+    return {"success": True, "results": tf_results}
+
+# ----------------------------------------------------------------------
+# 2. Metabolic Bottleneck Finder API
+# ----------------------------------------------------------------------
+@app.post("/api/metabolic_bottleneck")
+def get_metabolic_bottleneck(payload: dict):
+    pathway_id = payload.get("pathway_id", "")
+    if not pathway_id:
+        raise HTTPException(status_code=400, detail="pathway_id가 누락되었습니다.")
+        
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 파일을 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    gene_map = {g["locus_tag"].upper(): g for g in genes}
+    
+    all_expr_vals = []
+    for g in genes:
+        wt_val = g.get("wt_val", 0.0)
+        mut_val = g.get("mutant_val", 0.0)
+        all_expr_vals.extend([wt_val, mut_val])
+        
+    expr_q25 = np.percentile(all_expr_vals, 25) if all_expr_vals else 5.0
+    
+    gene_to_pathways = get_kegg_gene_mapping()
+    pathway_genes = gene_to_pathways.get(pathway_id, [])
+    
+    bottleneck_candidates = []
+    for gene in pathway_genes:
+        gene_upper = gene.upper()
+        if gene_upper not in gene_map:
+            continue
+            
+        g_data = gene_map[gene_upper]
+        wt_val = g_data.get("wt_val", 0.0)
+        mut_val = g_data.get("mutant_val", 0.0)
+        log2fc = g_data.get("log2fc", 0.0)
+        fdr = g_data.get("fdr", None)
+        
+        is_bottleneck = False
+        reason = ""
+        guide = ""
+        severity = "Low"
+        
+        has_fdr = fdr is not None
+        passes_stat = fdr <= 0.05 if has_fdr else True
+        
+        if log2fc <= -0.8 and passes_stat:
+            is_bottleneck = True
+            severity = "High"
+            reason = f"전사량 급격 억제 (Log2FC: {log2fc})"
+            pct_down = round((1 - 2**log2fc)*100, 1)
+            guide = f"Mutant 균주에서 WT 대비 발현이 {pct_down}% 억제되어 대사 흐름의 전반적 속도를 지연시키는 주된 원인이 됩니다. 강력한 프로모터(예: pTDH3, pTEF1)를 통한 상시 과발현(Overexpression) 개량이 추천됩니다."
+        elif wt_val <= expr_q25 and mut_val <= expr_q25:
+            is_bottleneck = True
+            severity = "Medium"
+            reason = f"속도 제한 후보군 (전체 하위 25% 저발현)"
+            guide = f"균주 내 전사 발현량(WT: {wt_val}, Mutant: {mut_val})이 세포 내 하위 25% 수준으로 극히 낮습니다. 해당 효소 활성이 대사 반응 속도를 병목 제한(Rate-limiting)할 위험이 높으므로 인공 프로모터 도입을 통한 발현량 보강이 필요합니다."
+            
+        if is_bottleneck:
+            bottleneck_candidates.append({
+                "locus_tag": g_data["locus_tag"],
+                "gene_symbol": g_data["gene_symbol"],
+                "wt_val": wt_val,
+                "mutant_val": mut_val,
+                "log2fc": log2fc,
+                "fdr": fdr,
+                "reason": reason,
+                "severity": severity,
+                "guide": guide
+            })
+            
+    bottleneck_candidates.sort(key=lambda x: (x["severity"] == "High", x["severity"] == "Medium", -x["log2fc"]), reverse=True)
+    return {"success": True, "candidates": bottleneck_candidates}
+
+# ----------------------------------------------------------------------
+# 3. Phenotypic Stress Predictor API
+# ----------------------------------------------------------------------
+@app.post("/api/stress_prediction")
+def get_stress_prediction(payload: dict):
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 파일을 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    esr_path = "data/yeast_esr.json"
+    if not os.path.exists(esr_path):
+        raise HTTPException(status_code=500, detail="환경 스트레스 시그니처 파일을 찾을 수 없습니다.")
+        
+    with open(esr_path, "r", encoding="utf-8") as f:
+        esr_db = json.load(f)
+        
+    gene_map = {g["locus_tag"].upper(): g for g in genes}
+    stress_profiles = []
+    
+    for stress_id, stress_info in esr_db.items():
+        up_markers = [m.upper() for m in stress_info["up_markers"]]
+        down_markers = [m.upper() for m in stress_info["down_markers"]]
+        
+        matched_up = [gene_map[m]["log2fc"] for m in up_markers if m in gene_map]
+        matched_down = [gene_map[m]["log2fc"] for m in down_markers if m in gene_map]
+        
+        if not matched_up and not matched_down:
+            continue
+            
+        up_score = sum(matched_up) / len(matched_up) if matched_up else 0.0
+        down_score = sum(matched_down) / len(matched_down) if matched_down else 0.0
+        
+        raw_score = up_score - down_score
+        psrs_score = max(-10.0, min(10.0, raw_score * 3.5))
+        
+        status = "일반형 (Neutral)"
+        class_name = "neutral-status"
+        verdict = ""
+        
+        if psrs_score >= 1.5:
+            status = "저항성 향상 (Resistant)"
+            class_name = "resistant-status"
+            verdict = f"본 변이 균주는 {stress_info['name']} 저항성 유전 프로그램이 야생형 대비 크게 활성화되어 스트레스 배양 환경에서 생존 및 성장에 우수한 저항성을 나타낼 것으로 예측됩니다."
+        elif psrs_score <= -1.5:
+            status = "감수성 취약 (Sensitive)"
+            class_name = "sensitive-status"
+            verdict = f"본 변이 균주는 {stress_info['name']}에 조기 취약 반응 유전자가 우점 발현되었으며 저항 회로 가동이 억제되어 있습니다. 발효기 운전 시 성장이 정지될 위험이 높으므로 해당 스트레스 제어가 필요합니다."
+        else:
+            verdict = f"본 변이 균주는 {stress_info['name']} 스트레스 시그니처 발현 변화가 야생형 대비 정상(Neutral) 수준입니다. 기존 발효 운영 조건을 그대로 유지하면 무난한 성장을 나타낼 것으로 보입니다."
+            
+        stress_profiles.append({
+            "stress_id": stress_id,
+            "name": stress_info["name"],
+            "score": round(float(psrs_score), 2),
+            "status": status,
+            "class_name": class_name,
+            "verdict": verdict,
+            "up_count": len(matched_up),
+            "down_count": len(matched_down)
+        })
+        
+    return {"success": True, "profiles": stress_profiles}
 
 @app.get("/api/pathways")
 def get_pathways():

@@ -1,0 +1,32 @@
+{
+  "Thermal": {
+    "name": "열 스트레스 (Thermal Stress)",
+    "up_markers": ["YHR087W", "YFL014W", "YLL026W", "YPL240C", "YDR171W", "YAL012W", "YMR105C"],
+    "down_markers": ["YNL163C", "YNL102W", "YGR148C", "YGL103W", "YKL006W", "YJL177W"]
+  },
+  "Ethanol": {
+    "name": "에탄올 스트레스 (Ethanol Stress)",
+    "up_markers": ["YMR110C", "YML100W", "YLR174W", "YHR104W", "YKL026C", "YML116W", "YOR153W"],
+    "down_markers": ["YBR160W", "YKL006W", "YJL177W", "YNL096C", "YLR229C", "YNL102W"]
+  },
+  "Osmotic": {
+    "name": "고삼투압 스트레스 (Osmotic Stress)",
+    "up_markers": ["YBR072W", "YLR258W", "YGR110W", "YOR180C", "YDR155C", "YHR104W", "YFL014W"],
+    "down_markers": ["YNL163C", "YOR312C", "YGL031C", "YOL040C", "YKL006W", "YJL177W"]
+  },
+  "Starvation": {
+    "name": "영양 결핍 및 생장 정지 (Nutrient Starvation)",
+    "up_markers": ["YLR258W", "YML100W", "YMR105C", "YBR072W", "YKL085W", "YDL066W", "YOR136W"],
+    "down_markers": ["YNL102W", "YNL163C", "YNL096C", "YLR229C", "YBR160W", "YKL006W"]
+  },
+  "Oxidative": {
+    "name": "산화 스트레스 (Oxidative Stress)",
+    "up_markers": ["YGR209C", "YDR453C", "YML116W", "YKL150W", "YAL012W", "YGR240C", "YKL026C"],
+    "down_markers": ["YBL030C", "YFL011W", "YKL006W", "YJL177W", "YNL096C", "YNL163C"]
+  },
+  "Acidic": {
+    "name": "약산성 환경 스트레스 (Weak Acid Stress)",
+    "up_markers": ["YPL058C", "YDR011W", "YOL150C", "YBR072W", "YFL014W", "YFL010C", "YOR153W"],
+    "down_markers": ["YNL163C", "YNL102W", "YLR229C", "YBR160W", "YKL006W", "YJL177W"]
+  }
+}

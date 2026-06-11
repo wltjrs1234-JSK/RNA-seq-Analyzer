@@ -21,3 +21,6 @@ mock_yeast_rnaseq.xlsx
 # OS files
 .DS_Store
 Thumbs.db
+
+# Scratch temp files
+scratch/

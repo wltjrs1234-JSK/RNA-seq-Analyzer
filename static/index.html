@@ -18,6 +18,9 @@
     <link rel="stylesheet" href="style.css">
     <!-- Cytoscape.js for Network Visualization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <!-- IGV.js for Embedded Genome Browser -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/igv@2.15.5/dist/css/igv.css">
+    <script src="https://cdn.jsdelivr.net/npm/igv@2.15.5/dist/igv.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -65,6 +68,14 @@
                 <a href="#" class="menu-item disabled" id="nav-gsea" data-tab="gsea-tab">
                     <i class="fa-solid fa-chart-area"></i>
                     <span class="menu-text">GSEA 농축</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-motif" data-tab="motif-tab">
+                    <i class="fa-solid fa-dna"></i>
+                    <span class="menu-text">모티프 탐색</span>
+                </a>
+                <a href="#" class="menu-item disabled" id="nav-advanced" data-tab="advanced-tab">
+                    <i class="fa-solid fa-flask-vial"></i>
+                    <span class="menu-text">균주 분석 확장</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -347,7 +358,7 @@
                                     <label for="heatmap-metric">선별 기준:</label>
                                     <select id="heatmap-metric" class="input-select">
                                         <option value="log2fc">절대값 Log2 Fold Change 순</option>
-                                        <option value="pvalue" id="heatmap-metric-pvalue">p-value(FDR) 가장 낮은 순</option>
+                                        <option value="pvalue" id="heatmap-metric-pvalue">FDR (Adjusted p-value) 가장 낮은 순</option>
                                     </select>
                                 </div>
                                 <div class="control-field">
@@ -356,6 +367,46 @@
                                         <input type="checkbox" id="heatmap-cluster" checked>
                                         <label for="heatmap-cluster"></label>
                                     </div>
+                                </div>
+                                <div class="control-field" style="margin-top: 15px;">
+                                    <label for="heatmap-height" style="display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 13px; color: var(--text-secondary);">
+                                        <span>히트맵 세로 높이:</span>
+                                        <span id="heatmap-height-val" style="font-weight: 600; color: var(--accent-cyan);">600px</span>
+                                    </label>
+                                    <input type="range" id="heatmap-height" min="400" max="2500" step="50" value="600" style="width: 100%; accent-color: var(--accent-cyan); height: 6px; background: #cbd5e1; border-radius: 3px; cursor: pointer; outline: none; margin-top: 8px;">
+                                </div>
+                                <div class="control-field" style="margin-top: 15px;">
+                                    <label for="heatmap-dendro-gap" style="display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 13px; color: var(--text-secondary);">
+                                        <span>좌측 선 간격 (유전자):</span>
+                                        <span id="heatmap-dendro-gap-val" style="font-weight: 600; color: var(--accent-cyan);">2%</span>
+                                    </label>
+                                    <input type="range" id="heatmap-dendro-gap" min="1" max="15" step="1" value="2" style="width: 100%; accent-color: var(--accent-cyan); height: 6px; background: #cbd5e1; border-radius: 3px; cursor: pointer; outline: none; margin-top: 8px;">
+                                </div>
+                                <div class="control-field" style="margin-top: 15px;">
+                                    <label for="heatmap-dendro-gap-top" style="display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 13px; color: var(--text-secondary);">
+                                        <span>상측 선 간격 (샘플):</span>
+                                        <span id="heatmap-dendro-gap-top-val" style="font-weight: 600; color: var(--accent-cyan);">2%</span>
+                                    </label>
+                                    <input type="range" id="heatmap-dendro-gap-top" min="1" max="15" step="1" value="2" style="width: 100%; accent-color: var(--accent-cyan); height: 6px; background: #cbd5e1; border-radius: 3px; cursor: pointer; outline: none; margin-top: 8px;">
+                                </div>
+                                <div class="control-field" style="margin-top: 15px;">
+                                    <label for="heatmap-margin-bottom" style="display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 13px; color: var(--text-secondary);">
+                                        <span>하단 여백 (샘플 이름):</span>
+                                        <span id="heatmap-margin-bottom-val" style="font-weight: 600; color: var(--accent-cyan);">100px</span>
+                                    </label>
+                                    <input type="range" id="heatmap-margin-bottom" min="60" max="250" step="10" value="100" style="width: 100%; accent-color: var(--accent-cyan); height: 6px; background: #cbd5e1; border-radius: 3px; cursor: pointer; outline: none; margin-top: 8px;">
+                                </div>
+                                <div class="control-field" style="margin-top: 15px;" id="sample-order-type-container">
+                                    <label for="heatmap-sample-order-type">샘플 순서 정렬:</label>
+                                    <select id="heatmap-sample-order-type" class="input-select" style="width: 100%;">
+                                        <option value="wt-mutant" selected>WT ➜ Mutant 순</option>
+                                        <option value="mutant-wt">Mutant ➜ WT 순</option>
+                                        <option value="custom">사용자 지정 순서</option>
+                                    </select>
+                                </div>
+                                <div class="control-field" style="margin-top: 10px; display: none;" id="sample-order-custom-container">
+                                    <label for="heatmap-sample-order-custom" style="font-size: 12px; color: var(--text-muted);">사용자 지정 샘플명 (쉼표 구분):</label>
+                                    <input type="text" id="heatmap-sample-order-custom" class="input-text" placeholder="예: WT_Rep1, WT_Rep3, Mutant_Rep2" style="width: 100%; font-size: 12px; padding: 6px 10px;">
                                 </div>
                                 <button class="btn btn-primary btn-full mt-10" id="regenerate-heatmap">열지도 재생성</button>
                             </div>
@@ -532,27 +583,39 @@
                     </div>
                 </section>
 
-                <!-- Tab 8: Protein Interaction Network -->
+                <!-- Tab 8: Protein Interaction & Regulatory Network -->
                 <section class="tab-pane" id="network-tab">
                     <div class="card glass-card">
-                        <div class="card-header flex-header">
-                            <h3 class="card-title">STRING-DB 단백질 상호작용 네트워크</h3>
+                        <!-- Network Sub-Header for Mode Selection -->
+                        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-color); display: flex; gap: 8px;">
+                            <button class="btn btn-secondary active" id="btn-net-mode-string" style="padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; border-radius: 6px;">
+                                <i class="fa-solid fa-circle-nodes"></i> STRING PPI 네트워크
+                            </button>
+                            <button class="btn btn-secondary" id="btn-net-mode-tf" style="padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; border-radius: 6px;">
+                                <i class="fa-solid fa-dna"></i> 전사조절(TF-Target) 네트워크
+                            </button>
+                        </div>
+                        <div class="card-header flex-header" style="border-top: none;">
+                            <h3 class="card-title" id="network-tab-title">STRING-DB 단백질 상호작용 네트워크</h3>
                             <div style="display: flex; gap: 12px; align-items: center;">
-                                <div class="control-group" style="margin-bottom: 0;">
-                                    <label for="network-limit" style="font-size: 12px;">노드 개수:</label>
-                                    <select id="network-limit" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
-                                        <option value="30">상위 30개 DEG</option>
-                                        <option value="50" selected>상위 50개 DEG</option>
-                                        <option value="100">상위 100개 DEG</option>
-                                    </select>
-                                </div>
-                                <div class="control-group" style="margin-bottom: 0;">
-                                    <label for="network-score" style="font-size: 12px;">신뢰도 기준:</label>
-                                    <select id="network-score" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
-                                        <option value="400" selected>보통 (0.40)</option>
-                                        <option value="700">높음 (0.70)</option>
-                                        <option value="900">매우 높음 (0.90)</option>
-                                    </select>
+                                <!-- STRING specific controls -->
+                                <div id="string-controls-wrapper" style="display: flex; gap: 12px; align-items: center;">
+                                    <div class="control-group" style="margin-bottom: 0;">
+                                        <label for="network-limit" style="font-size: 12px;">노드 개수:</label>
+                                        <select id="network-limit" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
+                                            <option value="30">상위 30개 DEG</option>
+                                            <option value="50" selected>상위 50개 DEG</option>
+                                            <option value="100">상위 100개 DEG</option>
+                                        </select>
+                                    </div>
+                                    <div class="control-group" style="margin-bottom: 0;">
+                                        <label for="network-score" style="font-size: 12px;">신뢰도 기준:</label>
+                                        <select id="network-score" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
+                                            <option value="400" selected>보통 (0.40)</option>
+                                            <option value="700">높음 (0.70)</option>
+                                            <option value="900">매우 높음 (0.90)</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <button class="btn btn-primary btn-sm" id="btn-rebuild-network" style="height: 28px; font-size: 12px; padding: 4px 10px; display: flex; align-items: center; gap: 4px;">
                                     <i class="fa-solid fa-arrows-rotate"></i>네트워크 갱신
@@ -567,12 +630,18 @@
                                     <span class="legend-item"><span class="legend-box down-box"></span> 발현 감소</span>
                                 </div>
                             </div>
-                            <div class="card glass-card" style="margin-bottom: 0; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); display: flex; flex-direction: column;">
-                                <div class="card-header" style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">
-                                    <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin: 0;"><i class="fa-solid fa-magnifying-glass-biochemistry icon-margin"></i>선택한 단백질 정보</h4>
+                            <div class="card glass-card" style="margin-bottom: 0; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); display: flex; flex-direction: column; overflow: hidden;">
+                                <div class="card-header" style="padding: 12px 16px; border-bottom: 1px solid var(--border-color); display: flex; gap: 16px; background: var(--bg-main);">
+                                    <button class="btn-subtab active" id="btn-subtab-node" style="background: none; border: none; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 4px;">상세 정보</button>
+                                    <button class="btn-subtab" id="btn-subtab-tflist" style="background: none; border: none; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-muted); padding-bottom: 4px; display: none;">TF 분석 목록</button>
                                 </div>
-                                <div class="card-body" id="network-node-details" style="padding: 16px; font-size: 13px; color: #475569; overflow-y: auto; flex: 1;">
-                                    <p class="text-center text-muted" style="margin-top: 100px;">네트워크에서 유전자 노드를 클릭하시면 상세 기능 설명이 여기에 표시됩니다.</p>
+                                <div class="card-body" id="network-side-body" style="padding: 16px; font-size: 13px; color: #475569; overflow-y: auto; flex: 1;">
+                                    <div id="network-node-details">
+                                        <p class="text-center text-muted" style="margin-top: 100px;">네트워크에서 유전자 노드를 클릭하시면 상세 기능 설명이 여기에 표시됩니다.</p>
+                                    </div>
+                                    <div id="network-tf-list-container" style="display: none; height: 100%;">
+                                        <p class="text-center text-muted" style="margin-top: 100px;">TF 조절 데이터를 집계하고 있습니다...</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -617,13 +686,208 @@
                     </div>
                 </section>
 
+                <!-- Tab 10: Motif Discovery -->
+                <section class="tab-pane" id="motif-tab">
+                    <div class="card glass-card">
+                        <div class="card-header flex-header">
+                            <h3 class="card-title">Promoter Sequence Motif Discovery (프로모터 모티프 분석)</h3>
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <div class="control-group" style="margin-bottom: 0;">
+                                    <label for="motif-len-select" style="font-size: 12px;">모티프 길이:</label>
+                                    <select id="motif-len-select" class="form-select" style="height: 28px; padding: 2px 6px; font-size: 12px; border-color: #cbd5e1; border-radius: 4px;">
+                                        <option value="6">6 bp</option>
+                                        <option value="8" selected>8 bp</option>
+                                        <option value="10">10 bp</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary btn-sm" id="btn-run-motif" style="height: 28px; font-size: 12px; padding: 4px 10px; display: flex; align-items: center; gap: 4px;">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>모티프 분석 실행
+                                </button>
+                                <div style="display: flex; gap: 6px; align-items: center; border-left: 1px solid var(--border-color); padding-left: 10px; margin-left: 4px;">
+                                    <button class="btn btn-secondary btn-export" id="btn-export-motif-jpg" title="차트 JPG 이미지로 내보내기" style="padding: 4px 8px; font-size: 11px; height: 32px;"><i class="fa-solid fa-image"></i> JPG</button>
+                                    <button class="btn btn-secondary btn-export" id="btn-export-motif-pdf" title="차트 PDF 파일로 내보내기" style="padding: 4px 8px; font-size: 11px; height: 32px;"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body" style="display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 24px;">
+                            <div class="alert-box-container" style="display: flex; flex-direction: column; gap: 15px;">
+                                <div class="alert-box" style="margin-bottom: 0;">
+                                    <i class="fa-solid fa-circle-info alert-icon"></i>
+                                    <p class="alert-text" style="font-size: 12px; line-height: 1.4;">상위 발현 유전자들의 프로모터 상류(TSS 기준 -500bp ~ +50bp) 서열을 스캔하여, Gibbs Sampling 알고리즘으로 가장 고농축된 모티프 합의 서열(Consensus Sequence)을 도출합니다.</p>
+                                </div>
+                                <div class="card glass-card" style="border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); padding: 16px; margin-bottom: 0;">
+                                    <h4 style="font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 12px;"><i class="fa-solid fa-square-poll-vertical icon-margin"></i>분석 결과 요약</h4>
+                                    <div style="font-size: 12px; color: #475569; display: flex; flex-direction: column; gap: 8px;">
+                                        <p><strong>도출된 모티프 (Consensus):</strong> <span id="motif-consensus-text" style="font-family: monospace; font-weight: bold; font-size: 14px; color: #6366f1; background: #e0e7ff; padding: 2px 6px; border-radius: 4px;">N/A</span></p>
+                                        <p><strong>정보량 점수 (Entropy Score):</strong> <span id="motif-score-text" style="font-weight: bold; color: #1e293b;">N/A</span></p>
+                                        <p class="text-muted" style="font-size: 11px; margin-top: 5px; line-height: 1.3;">* 오른쪽 염기서열 로고(Sequence Logo)의 높이가 클수록 해당 포지션에서 특정 염기가 발견될 확률 및 정보 강도가 높음을 나타냅니다.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-box" style="background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; min-height: 400px; display: flex; align-items: center; justify-content: center; position: relative;">
+                                <div id="motif-logo-chart" style="width: 100%; height: 380px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 10: Advanced Strain Analysis Tools -->
+                <section class="tab-pane" id="advanced-tab">
+                    <!-- Subtab Navigation for Advanced Analysis -->
+                    <div class="advanced-subtabs-nav" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <button class="subtab-btn active" id="btn-subtab-tf" style="padding: 8px 16px; font-weight: 500; font-size: 13px; border-radius: 6px; border: 1px solid var(--border-color); background: #ffffff; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-microscope" style="color: #6366f1;"></i>전사인자(TF) 조절망 분석
+                        </button>
+                        <button class="subtab-btn" id="btn-subtab-bottleneck" style="padding: 8px 16px; font-weight: 500; font-size: 13px; border-radius: 6px; border: 1px solid var(--border-color); background: #ffffff; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-shuffle" style="color: #10b981;"></i>대사 경로 병목 진단
+                        </button>
+                        <button class="subtab-btn" id="btn-subtab-stress" style="padding: 8px 16px; font-weight: 500; font-size: 13px; border-radius: 6px; border: 1px solid var(--border-color); background: #ffffff; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-gauge" style="color: #ef4444;"></i>균주 스트레스 저항성 판정
+                        </button>
+                    </div>
+
+                    <!-- Subtab 1: TF Activity Area -->
+                    <div id="subtab-tf-area" class="advanced-subtab-content">
+                        <div class="card glass-card" style="margin-bottom: 20px;">
+                            <div class="card-header flex-header">
+                                <h3 class="card-title"><i class="fa-solid fa-sitemap icon-margin"></i>Master 전사인자(TF) 활성 추론</h3>
+                                <button class="btn btn-primary" id="btn-run-tf-analysis"><i class="fa-solid fa-play"></i> TF 활성 분석 실행</button>
+                            </div>
+                        </div>
+                        <!-- Guide Panel -->
+                        <div class="guide-panel" style="margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; line-height: 1.5; color: #475569;">
+                            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                                <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-circle-info" style="color: #6366f1; margin-right: 4px;"></i>분석 용도:</span>
+                                <span>DEG 목록과 전사 조절 관계 DB(YEASTRACT)를 교차 분석하여, 특정 전사인자(TF)의 하위 표적 유전자들이 변이 균주에서 통계적으로 유의미하게 변화했는지 파악하고 TF 활성 증감을 추론합니다.</span>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-chart-line" style="color: #10b981; margin-right: 4px;"></i>해석 방법:</span>
+                                <span><b>활성도 지수(PSRS Score)</b>가 양수(+)이면 해당 TF의 조절망이 활성화(Activated)되었음을, 음수(-)이면 억제(Repressed)되었음을 뜻합니다. 각 막대를 클릭하면 개별 표적 DEG 유전자 리스트와 유의성(Fisher's p-value)을 확인할 수 있습니다.</span>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px;">
+                            <!-- Left: TF Score Bar Chart -->
+                            <div class="card glass-card" style="padding: 16px;">
+                                <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 12px;"><i class="fa-solid fa-chart-column icon-margin"></i>전사인자 활성도 지수 (Activated vs Repressed)</h4>
+                                <div id="tf-activity-chart" style="width: 100%; height: 450px; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 13px;">
+                                    분석 실행 버튼을 누르면 전사 조절망 활성 랭킹이 시각화됩니다.
+                                </div>
+                            </div>
+                            <!-- Right: Target DEG Details -->
+                            <div class="card glass-card" style="padding: 16px; display: flex; flex-direction: column;">
+                                <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 8px;"><i class="fa-solid fa-list icon-margin"></i>선택된 TF의 조절 대상 DEG 유전자 목록</h4>
+                                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;" id="tf-selected-desc">차트의 전사인자 막대를 클릭하면 세부 조절 유전자 정보가 여기에 표시됩니다.</p>
+                                <div style="flex-grow: 1; overflow-y: auto; max-height: 400px; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; background: #fafafa;" id="tf-target-list-container">
+                                    <div style="text-align: center; color: #94a3b8; padding-top: 50px; font-size: 12px;">선택된 유전자가 없습니다.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Subtab 2: Metabolic Bottleneck Area -->
+                    <div id="subtab-bottleneck-area" class="advanced-subtab-content" style="display: none;">
+                        <div class="card glass-card" style="margin-bottom: 20px;">
+                            <div class="card-header flex-header" style="flex-wrap: wrap; gap: 12px;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <h3 class="card-title" style="margin-bottom: 0;"><i class="fa-solid fa-road-barrier icon-margin"></i>대사 경로 병목 지점 예측</h3>
+                                    <select id="bottleneck-pathway-select" class="input-select" style="height: 32px; font-size: 12px; padding: 2px 8px; width: 220px; border-color: #cbd5e1;">
+                                        <!-- Will populate dynamically -->
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary" id="btn-run-bottleneck"><i class="fa-solid fa-magnifying-glass"></i> 병목 구간 스캔</button>
+                            </div>
+                            <div class="card-body">
+                                <!-- Guide Panel -->
+                                <div class="guide-panel" style="margin-bottom: 16px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; line-height: 1.5; color: #475569;">
+                                    <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                                        <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-circle-info" style="color: #10b981; margin-right: 4px;"></i>분석 용도:</span>
+                                        <span>선택된 KEGG 대사 경로(Pathway)상에 존재하는 유전자들의 발현 변화를 추적하여 대사 흐름을 지연시키는 속도 제한 단계(Rate-limiting step)의 병목 지점을 진단합니다.</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-chart-line" style="color: #10b981; margin-right: 4px;"></i>해석 방법:</span>
+                                        <span><b>High Severity (빨간색)</b>는 변이 균주에서 발현량이 현저히 저하(Log2FC ≤ -0.8)되어 대사 반응 속도를 저해하므로 1순위 상시 과발현 개량 대상입니다. <b>Medium Severity (노란색)</b>는 WT/Mutant 모두에서 발현 절대량이 전체 전사체의 하위 25% 이하인 유전자로 발현량 보강이 추천됩니다.</span>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 380px; border: 1px solid var(--border-color); border-radius: 6px;">
+                                    <table class="data-table" id="bottleneck-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Locus Tag</th>
+                                                <th>Gene Symbol</th>
+                                                <th>WT 평균</th>
+                                                <th>Mutant 평균</th>
+                                                <th>Log2 FC</th>
+                                                <th>병목 의심 요인</th>
+                                                <th>의심 수준</th>
+                                                <th style="width: 45%;">대사 설계 추천 개량 가이드</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="bottleneck-table-body">
+                                            <tr>
+                                                <td colspan="8" style="text-align: center; color: #94a3b8; padding: 40px 0; font-size: 12px;">원하는 대사 경로를 선택한 뒤 [병목 구간 스캔] 버튼을 실행해 주세요.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Subtab 3: Stress Spectrum Area -->
+                    <div id="subtab-stress-area" class="advanced-subtab-content" style="display: none;">
+                        <div class="card glass-card" style="margin-bottom: 20px;">
+                            <div class="card-header flex-header">
+                                <h3 class="card-title"><i class="fa-solid fa-shield-halved icon-margin"></i>균주 환경 스트레스 저항 스펙트럼</h3>
+                                <button class="btn btn-primary" id="btn-run-stress-prediction"><i class="fa-solid fa-play"></i> 스트레스 스펙트럼 판정</button>
+                            </div>
+                        </div>
+                        <!-- Guide Panel -->
+                        <div class="guide-panel" style="margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; line-height: 1.5; color: #475569;">
+                            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                                <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-circle-info" style="color: #ef4444; margin-right: 4px;"></i>분석 용도:</span>
+                                <span>산업 공정 중 마주하는 6대 환경 스트레스(열, 에탄올, 삼투압, 영양기아, 산화, 약산) 관련 마커 전사체 발현 시그니처를 연산하여 변이 균주의 환경 저항 스펙트럼 강도를 예측합니다.</span>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-chart-line" style="color: #10b981; margin-right: 4px;"></i>해석 방법:</span>
+                                <span>야생형(WT)을 기준점 0(빨간색 영역)으로 할 때, 지수(PSRS Score)가 <b>+1.5 이상(파란색 영역 확장)</b>이면 저항성 향상(Resistant)을 의미하고, <b>-1.5 이하(안쪽 수축)</b>이면 스트레스 감수성 취약(Sensitive)으로 판정합니다.</span>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                            <!-- Left: Radar Chart -->
+                            <div class="card glass-card" style="padding: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                                    <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin: 0;"><i class="fa-solid fa-compass icon-margin"></i>스트레스 저항 예측 인덱스 (PSRS Score)</h4>
+                                    <div style="display: flex; gap: 6px; align-items: center;" id="stress-toggle-container">
+                                        <button class="btn btn-toggle active" id="btn-stress-toggle-wt" style="padding: 4px 10px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; gap: 6px; height: 26px; border: 1px solid var(--border-color); background: #ffffff;">
+                                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444;"></span>야생형 (WT)
+                                        </button>
+                                        <button class="btn btn-toggle active" id="btn-stress-toggle-mut" style="padding: 4px 10px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; gap: 6px; height: 26px; border: 1px solid var(--border-color); background: #ffffff;">
+                                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #6366f1;"></span>변이주 (Mutant)
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="stress-radar-chart" style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 13px;">
+                                    판정 실행 버튼을 누르면 6대 스트레스 방사형 차트가 렌더링됩니다.
+                                </div>
+                            </div>
+                            <!-- Right: Diagnosis Report -->
+                            <div class="card glass-card" style="padding: 16px; display: flex; flex-direction: column;">
+                                <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 12px;"><i class="fa-solid fa-clipboard-check icon-margin"></i>균주 종합 표현형 진단서 리포트</h4>
+                                <div style="flex-grow: 1; overflow-y: auto; max-height: 400px; display: flex; flex-direction: column; gap: 12px;" id="stress-report-container">
+                                    <div style="text-align: center; color: #94a3b8; padding-top: 100px; font-size: 12px;">분석된 리포트가 존재하지 않습니다.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
             </div>
         </main>
     </div>
 
     <!-- Details Modal/Popup for Gene (Optional but neat) -->
     <div id="gene-modal" class="modal" style="display: none;">
-        <div class="modal-content glass-card">
+        <div class="modal-content glass-card" style="max-width: 800px; width: 90%;">
             <span class="close-btn" id="close-modal">&times;</span>
             <h2 id="modal-gene-title">Gene Name</h2>
             <p id="modal-gene-desc" class="modal-subtitle">Gene Description</p>

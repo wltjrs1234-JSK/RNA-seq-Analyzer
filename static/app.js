@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initTabs();
     initDropzone();
     initControls();
+    initAdvancedAnalysisBindings();
     
     // Add load mock button listener
     document.getElementById("load-mock-btn").addEventListener("click", loadMockData);
@@ -78,12 +79,14 @@ function switchTab(tabId) {
         renderNetworkGraph();
     } else if (tabId === 'gsea-tab') {
         loadGSEATerms();
+    } else if (tabId === 'motif-tab') {
+        renderMotifLogoPlaceholder();
     }
 }
 
 // Enable tabs after successful upload
 function enableAnalysisTabs() {
-    const disabledIds = ["nav-deg", "nav-volcano", "nav-pca", "nav-heatmap", "nav-kegg", "nav-go", "nav-network", "nav-gsea"];
+    const disabledIds = ["nav-deg", "nav-volcano", "nav-pca", "nav-heatmap", "nav-kegg", "nav-go", "nav-network", "nav-gsea", "nav-motif", "nav-advanced"];
     disabledIds.forEach(id => {
         document.getElementById(id).classList.remove("disabled");
     });
@@ -775,6 +778,90 @@ function initControls() {
     // Heatmap controls
     document.getElementById("regenerate-heatmap").addEventListener("click", renderHeatmap);
     
+    const heatmapHeightInput = document.getElementById("heatmap-height");
+    if (heatmapHeightInput) {
+        heatmapHeightInput.addEventListener("input", (e) => {
+            document.getElementById("heatmap-height-val").textContent = `${e.target.value}px`;
+            renderHeatmap();
+        });
+    }
+    
+    const heatmapDendroGapInput = document.getElementById("heatmap-dendro-gap");
+    if (heatmapDendroGapInput) {
+        heatmapDendroGapInput.addEventListener("input", (e) => {
+            document.getElementById("heatmap-dendro-gap-val").textContent = `${e.target.value}%`;
+            renderHeatmap();
+        });
+    }
+    
+    const heatmapDendroGapTopInput = document.getElementById("heatmap-dendro-gap-top");
+    if (heatmapDendroGapTopInput) {
+        heatmapDendroGapTopInput.addEventListener("input", (e) => {
+            document.getElementById("heatmap-dendro-gap-top-val").textContent = `${e.target.value}%`;
+            renderHeatmap();
+        });
+    }
+    
+    const heatmapMarginBottomInput = document.getElementById("heatmap-margin-bottom");
+    if (heatmapMarginBottomInput) {
+        heatmapMarginBottomInput.addEventListener("input", (e) => {
+            document.getElementById("heatmap-margin-bottom-val").textContent = `${e.target.value}px`;
+            renderHeatmap();
+        });
+    }
+    
+    // Sample order control event listeners
+    const sampleOrderTypeSelect = document.getElementById("heatmap-sample-order-type");
+    const sampleOrderCustomContainer = document.getElementById("sample-order-custom-container");
+    const sampleOrderCustomInput = document.getElementById("heatmap-sample-order-custom");
+    
+    if (sampleOrderTypeSelect) {
+        sampleOrderTypeSelect.addEventListener("change", (e) => {
+            if (e.target.value === "custom") {
+                sampleOrderCustomContainer.style.display = "block";
+            } else {
+                sampleOrderCustomContainer.style.display = "none";
+            }
+            renderHeatmap();
+        });
+    }
+    
+    if (sampleOrderCustomInput) {
+        sampleOrderCustomInput.addEventListener("input", () => {
+            renderHeatmap();
+        });
+    }
+    
+    // Clustering check change to enable/disable manual sample ordering
+    const heatmapClusterCheck = document.getElementById("heatmap-cluster");
+    if (heatmapClusterCheck) {
+        // Run once on load to set initial state
+        const toggleSampleOrderFields = () => {
+            if (heatmapClusterCheck.checked) {
+                if (sampleOrderTypeSelect) {
+                    sampleOrderTypeSelect.disabled = true;
+                    sampleOrderTypeSelect.style.opacity = "0.5";
+                }
+                sampleOrderCustomContainer.style.display = "none";
+            } else {
+                if (sampleOrderTypeSelect) {
+                    sampleOrderTypeSelect.disabled = false;
+                    sampleOrderTypeSelect.style.opacity = "1.0";
+                    if (sampleOrderTypeSelect.value === "custom") {
+                        sampleOrderCustomContainer.style.display = "block";
+                    }
+                }
+            }
+        };
+        heatmapClusterCheck.addEventListener("change", () => {
+            toggleSampleOrderFields();
+            renderHeatmap();
+        });
+        // Attach initial hook invocation in case mock data finalization triggers
+        document.addEventListener("DOMContentLoaded", toggleSampleOrderFields);
+        // Let's also run this after data load finalization
+    }
+    
     // GO Enrichment
     document.getElementById("run-go-btn").addEventListener("click", runGOEnrichment);
     
@@ -866,6 +953,120 @@ function initControls() {
     }
     if (btnExportKeggPdf) {
         btnExportKeggPdf.addEventListener("click", () => exportKeggMap("pdf", "yeast_kegg_pathway_map"));
+    }
+    
+    // ------------------------------------------------------------------
+    // Gene Detail Modal Bindings
+    // ------------------------------------------------------------------
+    const closeModalBtn = document.getElementById("close-modal");
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener("click", () => {
+            document.getElementById("gene-modal").style.display = "none";
+        });
+    }
+    window.addEventListener("click", (event) => {
+        const modal = document.getElementById("gene-modal");
+        if (event.target === modal) {
+            modal.style.display = "none";
+        }
+    });
+
+    // ------------------------------------------------------------------
+    // Transcription Factor & STRING Network Toggle Bindings
+    // ------------------------------------------------------------------
+    const btnNetString = document.getElementById("btn-net-mode-string");
+    const btnNetTF = document.getElementById("btn-net-mode-tf");
+    const stringControls = document.getElementById("string-controls-wrapper");
+    const subtabTFList = document.getElementById("btn-subtab-tflist");
+    
+    if (btnNetString && btnNetTF) {
+        btnNetString.addEventListener("click", () => {
+            btnNetString.classList.add("active");
+            btnNetTF.classList.remove("active");
+            document.getElementById("network-tab-title").textContent = "STRING-DB 단백질 상호작용 네트워크";
+            if (stringControls) stringControls.style.display = "flex";
+            if (subtabTFList) subtabTFList.style.display = "none";
+            
+            // Switch back to details subtab
+            document.getElementById("btn-subtab-node").click();
+            
+            gNetworkMode = 'string';
+            renderNetworkGraph();
+        });
+        
+        btnNetTF.addEventListener("click", () => {
+            btnNetTF.classList.add("active");
+            btnNetString.classList.remove("active");
+            document.getElementById("network-tab-title").textContent = "전사조절 (TF-Target) 네트워크 분석";
+            if (stringControls) stringControls.style.display = "none";
+            if (subtabTFList) subtabTFList.style.display = "block";
+            
+            // Switch to TF List subtab by default for TF mode
+            if (subtabTFList) subtabTFList.click();
+            
+            gNetworkMode = 'tf';
+            renderNetworkGraph();
+        });
+    }
+    
+    // Network Side Bar Subtabs Toggle Bindings
+    const btnSubtabNode = document.getElementById("btn-subtab-node");
+    const btnSubtabTFList = document.getElementById("btn-subtab-tflist");
+    const nodeDetailsArea = document.getElementById("network-node-details");
+    const tfListArea = document.getElementById("network-tf-list-container");
+    
+    if (btnSubtabNode && btnSubtabTFList) {
+        btnSubtabNode.addEventListener("click", () => {
+            btnSubtabNode.classList.add("active");
+            btnSubtabNode.style.color = "var(--primary-color)";
+            btnSubtabNode.style.borderBottom = "2px solid var(--primary-color)";
+            
+            btnSubtabTFList.classList.remove("active");
+            btnSubtabTFList.style.color = "var(--text-muted)";
+            btnSubtabTFList.style.borderBottom = "none";
+            
+            if (nodeDetailsArea) nodeDetailsArea.style.display = "block";
+            if (tfListArea) tfListArea.style.display = "none";
+        });
+        
+        btnSubtabTFList.addEventListener("click", () => {
+            btnSubtabTFList.classList.add("active");
+            btnSubtabTFList.style.color = "var(--primary-color)";
+            btnSubtabTFList.style.borderBottom = "2px solid var(--primary-color)";
+            
+            btnSubtabNode.classList.remove("active");
+            btnSubtabNode.style.color = "var(--text-muted)";
+            btnSubtabNode.style.borderBottom = "none";
+            
+            if (nodeDetailsArea) nodeDetailsArea.style.display = "none";
+            if (tfListArea) tfListArea.style.display = "block";
+        });
+    }
+    
+    // Rebuild Network Button
+    const btnRebuild = document.getElementById("btn-rebuild-network");
+    if (btnRebuild) {
+        btnRebuild.addEventListener("click", () => {
+            renderNetworkGraph();
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Motif Discovery Bindings
+    // ------------------------------------------------------------------
+    const btnRunMotif = document.getElementById("btn-run-motif");
+    if (btnRunMotif) {
+        btnRunMotif.addEventListener("click", () => {
+            runMotifAnalysis();
+        });
+    }
+    const btnExportMotifJpg = document.getElementById("btn-export-motif-jpg");
+    const btnExportMotifPdf = document.getElementById("btn-export-motif-pdf");
+    if (btnExportMotifJpg) {
+        btnExportMotifJpg.addEventListener("click", () => exportPlotlyChart("motif-logo-chart", "jpeg", "yeast_motif_logo"));
+    }
+    if (btnExportMotifPdf) {
+        btnExportMotifPdf.addEventListener("click", () => exportPlotlyChart("motif-logo-chart", "pdf", "yeast_motif_logo"));
     }
 }
 
@@ -1120,7 +1321,7 @@ function renderPlot(plotType) {
             gridcolor: '#e2e8f0',
             zerolinecolor: '#cbd5e1'
         },
-        margin: { t: 20, r: 20, b: 50, l: 60 },
+        margin: { t: 20, r: 20, b: 65, l: 60 },
         hovermode: 'closest',
         shapes: []
     };
@@ -1232,6 +1433,76 @@ function showGeneDetails(gene) {
     }
 }
 
+// Global IGV Browser instance holder
+let gIgvBrowserInstance = null;
+
+function openGeneIGVModal(gene) {
+    const modal = document.getElementById("gene-modal");
+    if (!modal) return;
+    
+    document.getElementById("modal-gene-title").textContent = `${gene.gene_symbol} (${gene.locus_tag})`;
+    document.getElementById("modal-gene-desc").textContent = gene.description || '유전자 설명이 존재하지 않습니다.';
+    
+    modal.style.display = "flex";
+    
+    // Bind Close events
+    const closeBtn = document.getElementById("close-modal");
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            modal.style.display = "none";
+        };
+    }
+    window.onclick = (e) => {
+        if (e.target === modal) {
+            modal.style.display = "none";
+        }
+    };
+    
+    // Render a copy of the bar chart inside the modal
+    setTimeout(() => {
+        let trace1, trace2;
+        if (gIsReplicateMode && gene.wt_reps && gene.mut_reps) {
+            trace1 = {
+                x: ['WT', 'Mutant'],
+                y: [gene.wt_val, gene.mutant_val],
+                type: 'bar',
+                name: '평균값',
+                marker: { color: ['rgba(99, 102, 241, 0.4)', 'rgba(239, 68, 68, 0.4)'] }
+            };
+            const repX = [];
+            const repY = [];
+            gene.wt_reps.forEach(v => { repX.push('WT'); repY.push(v); });
+            gene.mut_reps.forEach(v => { repX.push('Mutant'); repY.push(v); });
+            trace2 = {
+                x: repX,
+                y: repY,
+                mode: 'markers',
+                type: 'scatter',
+                name: '반복구',
+                marker: { size: 10, color: ['#6366f1', '#6366f1', '#6366f1', '#ff4d4d', '#ff4d4d', '#ff4d4d'], opacity: 0.9 }
+            };
+        } else {
+            trace1 = {
+                x: ['WT', 'Mutant'],
+                y: [gene.wt_val, gene.mutant_val],
+                type: 'bar',
+                marker: { color: ['#6366f1', '#ff4d4d'] }
+            };
+        }
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#0f172a', family: 'Inter, sans-serif' },
+            xaxis: { gridcolor: '#e2e8f0' },
+            yaxis: { title: 'Expression Value', gridcolor: '#e2e8f0' },
+            margin: { t: 20, r: 10, b: 30, l: 50 },
+            showlegend: false,
+            height: 220
+        };
+        Plotly.newPlot('modal-chart', trace2 ? [trace1, trace2] : [trace1], layout, {responsive: true});
+    }, 100);
+}
+
 function renderDetailChart(gene) {
     let trace1, trace2;
     
@@ -1300,120 +1571,324 @@ function renderHeatmap() {
     const count = parseInt(document.getElementById("heatmap-count").value);
     const metric = document.getElementById("heatmap-metric").value;
     const applyClustering = document.getElementById("heatmap-cluster").checked;
+    const chartDiv = document.getElementById("plotly-heatmap");
     
-    // Sort genes to find top DEGs
-    let sorted = [...gGenes];
-    if (metric === "log2fc") {
-        sorted.sort((a, b) => Math.abs(b.log2fc) - Math.abs(a.log2fc));
-    } else {
-        // Sort by lowest FDR/pvalue (exclude nulls)
-        sorted = sorted.filter(g => g.fdr !== null);
-        sorted.sort((a, b) => a.fdr - b.fdr);
+    const heightInput = document.getElementById("heatmap-height");
+    const heatmapHeight = heightInput ? parseInt(heightInput.value) : 600;
+    if (chartDiv) {
+        chartDiv.style.height = `${heatmapHeight}px`;
     }
     
-    const topGenes = sorted.slice(0, count);
+    const gapInput = document.getElementById("heatmap-dendro-gap");
+    const gapRatio = gapInput ? parseFloat(gapInput.value) / 100.0 : 0.02;
     
-    // Extract matrix and Z-score normalize row-wise
-    const yLabels = [];
-    const zDataWT = [];
-    const zDataMutant = [];
+    const gapTopInput = document.getElementById("heatmap-dendro-gap-top");
+    const gapRatioTop = gapTopInput ? parseFloat(gapTopInput.value) / 100.0 : 0.02;
     
-    topGenes.forEach(gene => {
-        yLabels.push(`${gene.gene_symbol} (${gene.locus_tag})`);
-        
-        let wtVals = [gene.wt_val];
-        let mutVals = [gene.mutant_val];
-        if (gIsReplicateMode && gene.wt_reps && gene.mut_reps) {
-            wtVals = gene.wt_reps;
-            mutVals = gene.mut_reps;
+    const marginBotInput = document.getElementById("heatmap-margin-bottom");
+    const marginBot = marginBotInput ? parseInt(marginBotInput.value) : 100;
+    
+    if (!applyClustering) {
+        // Simple mock hierarchical clustering for layout (Local mode)
+        let sorted = [...gGenes];
+        if (metric === "log2fc") {
+            sorted.sort((a, b) => Math.abs(b.log2fc) - Math.abs(a.log2fc));
+        } else {
+            sorted = sorted.filter(g => g.fdr !== null);
+            sorted.sort((a, b) => a.fdr - b.fdr);
         }
         
-        // Z-score calculation
-        const allVals = [...wtVals, ...mutVals];
-        const mean = npMean(allVals);
-        const std = npStd(allVals) || 1.0;
+        const topGenes = sorted.slice(0, count);
         
-        zDataWT.push(wtVals.map(v => (v - mean) / std));
-        zDataMutant.push(mutVals.map(v => (v - mean) / std));
-    });
-    
-    // Assemble samples columns labels
-    const xLabels = [];
-    const zDataMatrix = [];
-    
-    let wtCount = zDataWT[0].length;
-    let mutCount = zDataMutant[0].length;
-    
-    for (let i = 0; i < wtCount; i++) {
-        xLabels.push(wtCount > 1 ? `WT_Rep${i+1}` : 'WT');
-    }
-    for (let i = 0; i < mutCount; i++) {
-        xLabels.push(mutCount > 1 ? `Mutant_Rep${i+1}` : 'Mutant');
-    }
-    
-    // Combine matrix
-    for (let r = 0; r < yLabels.length; r++) {
-        zDataMatrix.push([...zDataWT[r], ...zDataMutant[r]]);
-    }
-    
-    // Simple mock hierarchical clustering for layout (optional, just sort by overall FC for visual neatness if cluster unchecked)
-    if (!applyClustering) {
-        // Already sorted by metric
-    } else {
-        // Let's sort rows based on their WT vs Mutant difference (which serves as a clean 1D clustering effect)
-        const rowScores = topGenes.map((g, idx) => ({index: idx, score: g.log2fc}));
-        rowScores.sort((a, b) => b.score - a.score);
+        const yLabels = [];
+        const zDataWT = [];
+        const zDataMutant = [];
         
-        const sortedMatrix = [];
-        const sortedYLabels = [];
-        rowScores.forEach(item => {
-            sortedMatrix.push(zDataMatrix[item.index]);
-            sortedYLabels.push(yLabels[item.index]);
+        topGenes.forEach(gene => {
+            yLabels.push(`${gene.gene_symbol} (${gene.locus_tag})`);
+            let wtVals = [gene.wt_val];
+            let mutVals = [gene.mutant_val];
+            if (gIsReplicateMode && gene.wt_reps && gene.mut_reps) {
+                wtVals = gene.wt_reps;
+                mutVals = gene.mut_reps;
+            }
+            
+            const allVals = [...wtVals, ...mutVals];
+            const mean = npMean(allVals);
+            const std = npStd(allVals) || 1.0;
+            
+            zDataWT.push(wtVals.map(v => (v - mean) / std));
+            zDataMutant.push(mutVals.map(v => (v - mean) / std));
         });
         
-        // Overwrite
-        zDataMatrix.length = 0;
-        zDataMatrix.push(...sortedMatrix);
-        yLabels.length = 0;
-        yLabels.push(...sortedYLabels);
-    }
-    
-    // Create Plotly Heatmap
-    const trace = {
-        z: zDataMatrix,
-        x: xLabels,
-        y: yLabels,
-        type: 'heatmap',
-        colorscale: [
-            [0, '#0000ff'],      // Deep Blue (Downregulated)
-            [0.5, '#ffffff'],    // White (Mean)
-            [1, '#ff0000']       // Deep Red (Upregulated)
-        ],
-        colorbar: {
-            title: 'Z-score',
-            titleside: 'right'
-        },
-        hoverongaps: false
-    };
-    
-    const layout = {
-        paper_bgcolor: 'rgba(0,0,0,0)',
-        plot_bgcolor: 'rgba(0,0,0,0)',
-        font: {
-            color: '#0f172a',
-            family: 'Inter, sans-serif'
-        },
-        margin: { t: 20, r: 20, b: 60, l: 150 },
-        xaxis: {
-            tickangle: -45
-        },
-        yaxis: {
-            autorange: 'reversed',
-            showgrid: false
+        let wtCount = zDataWT[0].length;
+        let mutCount = zDataMutant[0].length;
+        
+        // 1. Build original sample candidates map
+        const samplesList = [];
+        for (let i = 0; i < wtCount; i++) {
+            samplesList.push({ name: wtCount > 1 ? `WT_Rep${i+1}` : 'WT', type: 'wt', localIdx: i });
         }
-    };
-    
-    Plotly.newPlot('plotly-heatmap', [trace], layout, {responsive: true});
+        for (let i = 0; i < mutCount; i++) {
+            samplesList.push({ name: mutCount > 1 ? `Mutant_Rep${i+1}` : 'Mutant', type: 'mutant', localIdx: i });
+        }
+        
+        // 2. Perform sorting logic based on dropdown choices
+        const orderTypeSelect = document.getElementById("heatmap-sample-order-type");
+        const orderType = orderTypeSelect ? orderTypeSelect.value : "wt-mutant";
+        
+        let orderedSamples = [];
+        if (orderType === "wt-mutant") {
+            orderedSamples = [...samplesList];
+        } else if (orderType === "mutant-wt") {
+            orderedSamples = [
+                ...samplesList.filter(s => s.type === 'mutant'),
+                ...samplesList.filter(s => s.type === 'wt')
+            ];
+        } else if (orderType === "custom") {
+            const customInput = document.getElementById("heatmap-sample-order-custom");
+            const customVal = customInput ? customInput.value : "";
+            const customNames = customVal.split(",").map(s => s.trim().toUpperCase()).filter(s => s !== "");
+            
+            customNames.forEach(cName => {
+                const found = samplesList.find(s => s.name.toUpperCase() === cName);
+                if (found && !orderedSamples.includes(found)) {
+                    orderedSamples.push(found);
+                }
+            });
+            
+            // Append missing samples safely to prevent data loss
+            samplesList.forEach(s => {
+                if (!orderedSamples.includes(s)) {
+                    orderedSamples.push(s);
+                }
+            });
+        } else {
+            orderedSamples = [...samplesList];
+        }
+        
+        // 3. Assemble xLabels and zDataMatrix with the reordered samples
+        const xLabels = orderedSamples.map(s => s.name);
+        const zDataMatrix = [];
+        
+        for (let r = 0; r < yLabels.length; r++) {
+            const rowWT = zDataWT[r];
+            const rowMutant = zDataMutant[r];
+            const reorderedRow = orderedSamples.map(s => {
+                return s.type === 'wt' ? rowWT[s.localIdx] : rowMutant[s.localIdx];
+            });
+            zDataMatrix.push(reorderedRow);
+        }
+        
+        const trace = {
+            z: zDataMatrix,
+            x: xLabels,
+            y: yLabels,
+            type: 'heatmap',
+            colorscale: [
+                [0, '#0000ff'],      // Deep Blue
+                [0.5, '#ffffff'],    // White
+                [1, '#ff0000']       // Deep Red
+            ],
+            colorbar: {
+                title: 'Z-score',
+                titleside: 'right'
+            },
+            hoverongaps: false
+        };
+        
+        const layout = {
+            height: heatmapHeight,
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#0f172a', family: 'Inter, sans-serif' },
+            margin: { t: 20, r: 20, b: marginBot, l: 150 },
+            xaxis: { tickangle: -45 },
+            yaxis: { autorange: 'reversed', showgrid: false }
+        };
+        
+        Plotly.newPlot('plotly-heatmap', [trace], layout, {responsive: true});
+    } else {
+        // Advanced Hierarchical Clustering with Dendrograms (Server mode)
+        chartDiv.innerHTML = `<div style="text-align: center; padding-top: 150px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">이차원 계층 클러스터링(Heatmap & Dendrogram) 연산 중...</p></div>`;
+        
+        // Extract top genes based on criteria
+        let sorted = [...gGenes];
+        if (metric === "log2fc") {
+            sorted.sort((a, b) => Math.abs(b.log2fc) - Math.abs(a.log2fc));
+        } else {
+            sorted = sorted.filter(g => g.fdr !== null);
+            sorted.sort((a, b) => a.fdr - b.fdr);
+        }
+        const topGenes = sorted.slice(0, count);
+        const geneLocusTags = topGenes.map(g => g.locus_tag);
+
+        fetch(`${API_URL}/api/cluster_heatmap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                genes: geneLocusTags,
+                count: count,
+                metric: metric
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                chartDiv.innerHTML = `<div class="text-center text-danger" style="padding-top: 150px;">클러스터링 연산 실패: ${data.detail}</div>`;
+                return;
+            }
+            
+            const xLabels = data.x_labels || [];
+            const yLabels = data.y_labels || [];
+            const zMatrix = data.expression_matrix || [];
+            const geneDendro = data.gene_dendrogram;
+            const sampleDendro = data.sample_dendrogram;
+            
+            const traces = [];
+            
+            // Generate index arrays for linear scale matching
+            const xIndices = xLabels.map((_, i) => i);
+            const yIndices = yLabels.map((_, i) => i);
+            
+            // 1. Heatmap Trace
+            const heatmapTrace = {
+                z: zMatrix,
+                x: xIndices,
+                y: yIndices,
+                type: 'heatmap',
+                xaxis: 'x',
+                yaxis: 'y',
+                colorscale: [
+                    [0, '#0000ff'],
+                    [0.5, '#ffffff'],
+                    [1, '#ff0000']
+                ],
+                colorbar: {
+                    title: 'Z-score',
+                    titleside: 'right',
+                    len: 0.8,
+                    y: 0.4
+                },
+                hoverongaps: false
+            };
+            traces.push(heatmapTrace);
+            
+            // 2. Gene Dendrogram Trace (Y-axis hierarchy)
+            if (geneDendro && geneDendro.x && geneDendro.x.length > 0) {
+                const gdX = [];
+                const gdY = [];
+                geneDendro.x.forEach((xs, idx) => {
+                    const ys = geneDendro.y[idx];
+                    gdX.push(...xs, null);
+                    gdY.push(...ys, null);
+                });
+                
+                const geneDendroTrace = {
+                    x: gdX,
+                    y: gdY,
+                    type: 'scatter',
+                    mode: 'lines',
+                    xaxis: 'x2',
+                    yaxis: 'y',
+                    line: { color: '#475569', width: 1.5 },
+                    hoverinfo: 'none',
+                    showlegend: false
+                };
+                traces.push(geneDendroTrace);
+            }
+            
+            // 3. Sample Dendrogram Trace (X-axis hierarchy)
+            if (sampleDendro && sampleDendro.x && sampleDendro.x.length > 0) {
+                const sdX = [];
+                const sdY = [];
+                sampleDendro.x.forEach((xs, idx) => {
+                    const ys = sampleDendro.y[idx];
+                    sdX.push(...xs, null);
+                    sdY.push(...ys, null);
+                });
+                
+                const sampleDendroTrace = {
+                    x: sdX,
+                    y: sdY,
+                    type: 'scatter',
+                    mode: 'lines',
+                    xaxis: 'x',
+                    yaxis: 'y2',
+                    line: { color: '#475569', width: 1.5 },
+                    hoverinfo: 'none',
+                    showlegend: false
+                };
+                traces.push(sampleDendroTrace);
+            }
+            
+            // Calculate dynamic margins and domain boundaries based on gapRatio, gapRatioTop, and marginBot
+            const gap = gapRatio;
+            
+            // X-axis layouts:
+            // xaxis (heatmap): [0.24, 1.0]
+            // xaxis2 (gene dendrogram): [0.0, 0.24 - gap]
+            const xHeatmapStart = 0.24;
+            const xGeneDendroEnd = Math.max(0.0, xHeatmapStart - gap);
+            
+            // Y-axis layouts:
+            // yaxis (heatmap): [0.0, 0.82]
+            // yaxis2 (sample dendrogram): [0.82 + gapRatioTop, 1.0]
+            const yHeatmapEnd = 0.82;
+            const ySampleDendroStart = Math.min(1.0, yHeatmapEnd + gapRatioTop);
+
+            const layout = {
+                height: heatmapHeight,
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#0f172a', family: 'Inter, sans-serif' },
+                margin: { t: 10, r: 20, b: marginBot, l: 150 },
+                showlegend: false,
+                
+                // Axis configurations for subplot domain partitioning
+                xaxis: {
+                    domain: [xHeatmapStart, 1.0],
+                    tickangle: -45,
+                    showgrid: false,
+                    zeroline: false,
+                    tickvals: xIndices,
+                    ticktext: xLabels
+                },
+                yaxis: {
+                    domain: [0.0, yHeatmapEnd],
+                    autorange: 'reversed',
+                    showgrid: false,
+                    zeroline: false,
+                    tickvals: yIndices,
+                    ticktext: yLabels
+                },
+                
+                // X2 is for Gene Dendrogram (Left side)
+                xaxis2: {
+                    domain: [0.0, xGeneDendroEnd],
+                    showgrid: false,
+                    zeroline: false,
+                    showticklabels: false,
+                    autorange: 'reversed' // Branch outwards towards the left
+                },
+                
+                // Y2 is for Sample Dendrogram (Top side)
+                yaxis2: {
+                    domain: [ySampleDendroStart, 1.0],
+                    showgrid: false,
+                    zeroline: false,
+                    showticklabels: false
+                }
+            };
+            
+            chartDiv.innerHTML = "";
+            Plotly.newPlot('plotly-heatmap', traces, layout, {responsive: true});
+        })
+        .catch(err => {
+            console.error("Clustering API 오류:", err);
+            chartDiv.innerHTML = `<div class="text-center text-danger" style="padding-top: 150px;"><i class="fa-solid fa-triangle-exclamation fa-2x mb-10"></i><p>클러스터링 로드 실패: ${err.message}</p></div>`;
+        });
+    }
 }
 
 // Simple stats helpers in JS
@@ -1675,7 +2150,7 @@ function renderPathwayImageViewer(data) {
             }
             
             if (match) {
-                showGeneDetailsModal(match);
+                showGeneDetails(match);
             }
         });
         
@@ -1694,68 +2169,7 @@ function updateTooltipPosition(e, tooltip) {
 
 // Modal Detail View (For KEGG area clicks)
 function showGeneDetailsModal(gene) {
-    const modal = document.getElementById("gene-modal");
-    document.getElementById("modal-gene-title").textContent = `${gene.gene_symbol} (${gene.locus_tag})`;
-    document.getElementById("modal-gene-desc").textContent = gene.description || '유전자 설명이 존재하지 않습니다.';
-    
-    modal.style.display = "flex";
-    
-    // Close button
-    document.getElementById("close-modal").onclick = () => {
-        modal.style.display = "none";
-    };
-    
-    // Click outside to close
-    window.onclick = (e) => {
-        if (e.target === modal) {
-            modal.style.display = "none";
-        }
-    };
-    
-    // Redraw modal chart
-    let trace1, trace2;
-    
-    if (gIsReplicateMode && gene.wt_reps && gene.mut_reps) {
-        trace1 = {
-            x: ['WT', 'Mutant'],
-            y: [gene.wt_val, gene.mutant_val],
-            type: 'bar',
-            name: '평균값',
-            marker: { color: ['rgba(59, 130, 246, 0.4)', 'rgba(239, 68, 68, 0.4)'] }
-        };
-        
-        const repX = [];
-        const repY = [];
-        gene.wt_reps.forEach(v => { repX.push('WT'); repY.push(v); });
-        gene.mut_reps.forEach(v => { repX.push('Mutant'); repY.push(v); });
-        
-        trace2 = {
-            x: repX,
-            y: repY,
-            mode: 'markers',
-            type: 'scatter',
-            name: '반복구',
-            marker: { size: 12, color: ['#3b82f6', '#3b82f6', '#3b82f6', '#ff4d4d', '#ff4d4d', '#ff4d4d'], opacity: 0.9 }
-        };
-    } else {
-        trace1 = {
-            x: ['WT', 'Mutant'],
-            y: [gene.wt_val, gene.mutant_val],
-            type: 'bar',
-            marker: { color: ['#3b82f6', '#ff4d4d'] }
-        };
-    }
-    
-    const layout = {
-        paper_bgcolor: 'rgba(0,0,0,0)',
-        plot_bgcolor: 'rgba(0,0,0,0)',
-        font: { color: '#0f172a', family: 'Inter, sans-serif' },
-        xaxis: { gridcolor: '#e2e8f0' },
-        yaxis: { title: 'Expression (TPM/FPKM)', gridcolor: '#e2e8f0' }
-    };
-    
-    const data = trace2 ? [trace1, trace2] : [trace1];
-    Plotly.newPlot('modal-chart', data, layout, {responsive: true});
+    openGeneIGVModal(gene);
 }
 
 // ----------------------------------------------------------------------
@@ -2063,138 +2477,456 @@ function renderPCAPlot() {
 }
 
 // ----------------------------------------------------------------------
-// 11. STRING PPI Network Graph
+// 11. STRING PPI & TF-Target Regulatory Network Graph
 // ----------------------------------------------------------------------
 let cyInstance = null;
+let gNetworkMode = 'string'; // 'string' or 'tf'
+let gTFAssociationData = null; // Stored results from TF enrichment
+
 function renderNetworkGraph() {
     const limit = document.getElementById("network-limit").value;
     const score = document.getElementById("network-score").value;
-    
     const container = document.getElementById("cy-network");
-    container.innerHTML = `<div style="text-align: center; padding-top: 200px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">STRING-DB 상호작용 정보 다운로드 중...</p></div>`;
     
-    fetch(`${API_URL}/api/network?limit=${limit}&score=${score}`)
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) {
-            container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-triangle-exclamation fa-2x mb-10"></i><p>${data.detail}</p></div>`;
-            return;
-        }
+    if (gNetworkMode === 'string') {
+        container.innerHTML = `<div style="text-align: center; padding-top: 200px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">STRING-DB 상호작용 정보 다운로드 중...</p></div>`;
         
-        const nodes = data.nodes || [];
-        const edges = data.edges || [];
-        
-        if (nodes.length === 0) {
-            container.innerHTML = `<div class="text-center text-muted" style="padding-top: 200px;">상위 DEG 유전자들에 매칭되는 상호작용 노드가 없습니다.</div>`;
-            return;
-        }
-        
-        container.innerHTML = "";
-        
-        const elements = [];
-        nodes.forEach(n => {
-            let color = '#cbd5e1';
-            if (n.log2fc > 0) {
-                const intensity = Math.min(n.log2fc / 2.0, 1.0);
-                color = `rgb(${255}, ${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)})`;
-            } else if (n.log2fc < 0) {
-                const intensity = Math.min(Math.abs(n.log2fc) / 2.0, 1.0);
-                color = `rgb(${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)}, ${255})`;
+        fetch(`${API_URL}/api/network?limit=${limit}&score=${score}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-triangle-exclamation fa-2x mb-10"></i><p>${data.detail}</p></div>`;
+                return;
             }
             
-            elements.push({
-                data: {
-                    id: n.id,
-                    label: n.label,
-                    log2fc: n.log2fc,
-                    desc: n.desc,
-                    bg: color
+            const nodes = data.nodes || [];
+            const edges = data.edges || [];
+            
+            if (nodes.length === 0) {
+                container.innerHTML = `<div class="text-center text-muted" style="padding-top: 200px;">상위 DEG 유전자들에 매칭되는 상호작용 노드가 없습니다.</div>`;
+                return;
+            }
+            
+            container.innerHTML = "";
+            const elements = [];
+            
+            nodes.forEach(n => {
+                let color = '#cbd5e1';
+                if (n.log2fc > 0) {
+                    const intensity = Math.min(n.log2fc / 2.0, 1.0);
+                    color = `rgb(${255}, ${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)})`;
+                } else if (n.log2fc < 0) {
+                    const intensity = Math.min(Math.abs(n.log2fc) / 2.0, 1.0);
+                    color = `rgb(${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)}, ${255})`;
+                }
+                
+                elements.push({
+                    data: {
+                        id: n.id,
+                        label: n.label,
+                        log2fc: n.log2fc,
+                        desc: n.desc,
+                        bg: color
+                    }
+                });
+            });
+            
+            edges.forEach((e, idx) => {
+                elements.push({
+                    data: {
+                        id: `e_${idx}`,
+                        source: e.source,
+                        target: e.target,
+                        weight: e.score / 1000.0
+                    }
+                });
+            });
+            
+            cyInstance = cytoscape({
+                container: container,
+                elements: elements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'background-color': 'data(bg)',
+                            'border-width': '2px',
+                            'border-color': '#1e293b',
+                            'color': '#0f172a',
+                            'font-size': '12px',
+                            'font-weight': 'bold',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'width': '50px',
+                            'height': '50px',
+                            'overlay-padding': '4px',
+                            'text-outline-width': '2px',
+                            'text-outline-color': '#ffffff'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 'mapData(weight, 0.4, 1.0, 1.5, 4.0)',
+                            'line-color': '#94a3b8',
+                            'curve-style': 'bezier',
+                            'opacity': 0.7
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'cose',
+                    animate: true,
+                    nodeRepulsion: function( node ){ return 2048; },
+                    idealEdgeLength: function( edge ){ return 64; },
+                    fit: true
                 }
             });
-        });
-        
-        edges.forEach((e, idx) => {
-            elements.push({
-                data: {
-                    id: `e_${idx}`,
-                    source: e.source,
-                    target: e.target,
-                    weight: e.score / 1000.0
-                }
+            
+            const detailsPanel = document.getElementById("network-node-details");
+            cyInstance.on('tap', 'node', function(evt){
+                const nodeData = evt.target.data();
+                detailsPanel.innerHTML = `
+                    <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #6366f1; text-transform: uppercase;">ORF Name</span>
+                        <h5 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 2px 0;">${nodeData.id}</h5>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #64748b;">Gene Symbol</span>
+                        <p style="font-size: 14px; font-weight: 500; color: #1e293b; margin: 2px 0;">${nodeData.label}</p>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #64748b;">Log2 Fold Change</span>
+                        <p style="font-size: 14px; font-weight: 600; color: ${nodeData.log2fc >= 0 ? '#ef4444' : '#3b82f6'}; margin: 2px 0;">
+                            ${nodeData.log2fc >= 0 ? '+' : ''}${nodeData.log2fc.toFixed(4)}
+                        </p>
+                    </div>
+                    <div>
+                        <span style="font-size: 11px; font-weight: 600; color: #64748b;">Description</span>
+                        <p style="font-size: 13px; line-height: 1.5; color: #475569; margin: 2px 0; max-height: 200px; overflow-y: auto;">
+                            ${nodeData.desc || '정보 없음'}
+                        </p>
+                    </div>
+                `;
             });
+        })
+        .catch(err => {
+            container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i><p>네트워크 렌더링 실패: ${err.message}</p></div>`;
         });
-        
-        cyInstance = cytoscape({
-            container: container,
-            elements: elements,
-            style: [
-                {
-                    selector: 'node',
-                    style: {
-                        'label': 'data(label)',
-                        'background-color': 'data(bg)',
-                        'border-width': '2px',
-                        'border-color': '#1e293b',
-                        'color': '#0f172a',
-                        'font-size': '12px',
-                        'font-weight': 'bold',
-                        'text-valign': 'center',
-                        'text-halign': 'center',
-                        'width': '50px',
-                        'height': '50px',
-                        'overlay-padding': '4px',
-                        'text-outline-width': '2px',
-                        'text-outline-color': '#ffffff'
-                    }
-                },
-                {
-                    selector: 'edge',
-                    style: {
-                        'width': 'mapData(weight, 0.4, 1.0, 1.5, 4.0)',
-                        'line-color': '#94a3b8',
-                        'curve-style': 'bezier',
-                        'opacity': 0.7
-                    }
-                }
-            ],
-            layout: {
-                name: 'cose',
-                animate: true,
-                nodeRepulsion: function( node ){ return 2048; },
-                idealEdgeLength: function( edge ){ return 64; },
-                fit: true
+    } else {
+        // TF-Target Regulatory Network Mode
+        container.innerHTML = `<div style="text-align: center; padding-top: 200px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">전사인자(TF) 조절 관계 연산 및 초기하 검정 중...</p></div>`;
+        const tfListContainer = document.getElementById("network-tf-list-container");
+        if (tfListContainer) {
+            tfListContainer.innerHTML = `<div style="text-align: center; padding-top: 80px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin"></i><p style="font-size: 12px; margin-top: 6px;">TF 목록 집계 중...</p></div>`;
+        }
+
+        // Calculate targetList based on current threshold
+        const log2fcThresh = parseFloat(document.getElementById("log2fc-thresh").value) || 0;
+        const pvalThresh = parseFloat(document.getElementById("pvalue-thresh").value) || 1.0;
+        const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
+        const targetList = [];
+        gGenes.forEach(gene => {
+            const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
+            const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
+            let passesPVal = true;
+            if (statType !== "none" && gIsReplicateMode) {
+                passesPVal = (statVal !== null && statVal <= pvalThresh);
+            }
+            if (passesLog2FC && passesPVal) {
+                targetList.push(gene.locus_tag);
             }
         });
-        
-        const detailsPanel = document.getElementById("network-node-details");
-        cyInstance.on('tap', 'node', function(evt){
-            const nodeData = evt.target.data();
-            detailsPanel.innerHTML = `
-                <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
-                    <span style="font-size: 11px; font-weight: 600; color: #6366f1; text-transform: uppercase;">ORF Name</span>
-                    <h5 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 2px 0;">${nodeData.id}</h5>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <span style="font-size: 11px; font-weight: 600; color: #64748b;">Gene Symbol</span>
-                    <p style="font-size: 14px; font-weight: 500; color: #1e293b; margin: 2px 0;">${nodeData.label}</p>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <span style="font-size: 11px; font-weight: 600; color: #64748b;">Log2 Fold Change</span>
-                    <p style="font-size: 14px; font-weight: 600; color: ${nodeData.log2fc >= 0 ? '#ef4444' : '#3b82f6'}; margin: 2px 0;">
-                        ${nodeData.log2fc >= 0 ? '+' : ''}${nodeData.log2fc.toFixed(4)}
-                    </p>
-                </div>
-                <div>
-                    <span style="font-size: 11px; font-weight: 600; color: #64748b;">Description</span>
-                    <p style="font-size: 13px; line-height: 1.5; color: #475569; margin: 2px 0; max-height: 200px; overflow-y: auto;">
-                        ${nodeData.desc || '정보 없음'}
-                    </p>
-                </div>
-            `;
+
+        // Use selectedTfId if provided or default TF (e.g. YEL009C)
+        const activeTfRow = document.querySelector(".tf-row.selected-tf-row");
+        const selectedTfParam = activeTfRow ? activeTfRow.getAttribute("data-tf-id") : "YEL009C";
+
+        fetch(`${API_URL}/api/tf_enrichment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                genes: targetList,
+                selected_tf: selectedTfParam
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success === false) {
+                container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i><p>TF 분석 실패: ${data.detail || "알 수 없는 에러"}</p></div>`;
+                return;
+            }
+            
+            gTFAssociationData = data.enrichment || [];
+            
+            // 1. Render TF Enrichment Table in the Right Subtab
+            renderTFListTable(gTFAssociationData, selectedTfParam);
+            
+            // 2. Render Full Regulatory Network
+            const network = data.network || { nodes: [], edges: [] };
+            const nodes = network.nodes || [];
+            const edges = network.edges || [];
+            
+            if (nodes.length === 0) {
+                container.innerHTML = `<div class="text-center text-muted" style="padding-top: 200px;">규제 네트워크를 렌더링할 유의미한 TF-Target 관계가 없습니다.</div>`;
+                return;
+            }
+            
+            container.innerHTML = "";
+            const elements = [];
+            
+            nodes.forEach(n => {
+                let color = '#cbd5e1';
+                let shape = 'ellipse';
+                let borderCol = '#1e293b';
+                
+                if (n.is_tf) {
+                    shape = 'hexagon';
+                    color = '#818cf8'; // Premium indigo for TFs
+                    borderCol = '#4f46e5';
+                } else {
+                    if (n.log2fc > 0) {
+                        const intensity = Math.min(n.log2fc / 2.0, 1.0);
+                        color = `rgb(${255}, ${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)})`;
+                    } else if (n.log2fc < 0) {
+                        const intensity = Math.min(Math.abs(n.log2fc) / 2.0, 1.0);
+                        color = `rgb(${Math.round(255 - 200 * intensity)}, ${Math.round(255 - 200 * intensity)}, ${255})`;
+                    }
+                }
+                
+                elements.push({
+                    data: {
+                        id: n.id,
+                        label: n.label,
+                        log2fc: n.log2fc || 0,
+                        is_tf: n.is_tf,
+                        desc: n.desc || '',
+                        bg: color,
+                        shape: shape,
+                        border: borderCol
+                    }
+                });
+            });
+            
+            edges.forEach((e, idx) => {
+                elements.push({
+                    data: {
+                        id: `tf_e_${idx}`,
+                        source: e.source,
+                        target: e.target,
+                        type: e.type || 'regulate'
+                    }
+                });
+            });
+            
+            cyInstance = cytoscape({
+                container: container,
+                elements: elements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'background-color': 'data(bg)',
+                            'shape': 'data(shape)',
+                            'border-width': '2.5px',
+                            'border-color': 'data(border)',
+                            'color': '#0f172a',
+                            'font-size': '11px',
+                            'font-weight': 'bold',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'width': '48px',
+                            'height': '48px',
+                            'text-outline-width': '1.5px',
+                            'text-outline-color': '#ffffff'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': '2px',
+                            'line-color': '#a5b4fc',
+                            'target-arrow-color': '#4f46e5',
+                            'target-arrow-shape': 'triangle', // Clarifies regulatory flow directions (TF -> Target)
+                            'curve-style': 'bezier',
+                            'opacity': 0.85
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'cose',
+                    animate: true,
+                    nodeRepulsion: function( node ){ return 3000; },
+                    idealEdgeLength: function( edge ){ return 80; },
+                    fit: true
+                }
+            });
+            
+            // Node Tap Listener
+            const detailsPanel = document.getElementById("network-node-details");
+            cyInstance.on('tap', 'node', function(evt){
+                const nodeData = evt.target.data();
+                
+                // Switch to detail subtab
+                document.getElementById("btn-subtab-node").click();
+                
+                detailsPanel.innerHTML = `
+                    <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #6366f1; text-transform: uppercase;">
+                            ${nodeData.is_tf ? 'Transcription Factor (TF)' : 'Target DEG Gene'}
+                        </span>
+                        <h5 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 2px 0;">${nodeData.id}</h5>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #64748b;">Gene Symbol</span>
+                        <p style="font-size: 14px; font-weight: 500; color: #1e293b; margin: 2px 0;">${nodeData.label}</p>
+                    </div>
+                    ${!nodeData.is_tf ? `
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #64748b;">Log2 Fold Change</span>
+                        <p style="font-size: 14px; font-weight: 600; color: ${nodeData.log2fc >= 0 ? '#ef4444' : '#3b82f6'}; margin: 2px 0;">
+                            ${nodeData.log2fc >= 0 ? '+' : ''}${nodeData.log2fc.toFixed(4)}
+                        </p>
+                    </div>` : ''}
+                    <div>
+                        <span style="font-size: 11px; font-weight: 600; color: #64748b;">Description</span>
+                        <p style="font-size: 13px; line-height: 1.5; color: #475569; margin: 2px 0; max-height: 200px; overflow-y: auto;">
+                            ${nodeData.desc || '설명 정보 없음'}
+                        </p>
+                    </div>
+                `;
+            });
+        })
+        .catch(err => {
+            console.error("TF Network 렌더링 실패:", err);
+            container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i><p>네트워크 렌더링 실패: ${err.message}</p></div>`;
         });
-    })
-    .catch(err => {
-        container.innerHTML = `<div class="text-center text-danger" style="padding-top: 200px;"><i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i><p>네트워크 렌더링 실패: ${err.message}</p></div>`;
+    }
+}
+
+function renderTFListTable(tfResults, activeTfId) {
+    const container = document.getElementById("network-tf-list-container");
+    if (!container) return;
+    
+    if (tfResults.length === 0) {
+        container.innerHTML = `<p class="text-center text-muted" style="padding: 20px 0;">농축된 전사인자(TF)가 존재하지 않습니다.</p>`;
+        return;
+    }
+    
+    let html = `
+        <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
+            <table class="data-table" style="font-size: 11px; width: 100%;">
+                <thead>
+                    <tr>
+                        <th>TF</th>
+                        <th class="stat-header">매치 (k/M)</th>
+                        <th class="stat-header">p-value</th>
+                        <th class="stat-header">FDR</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    tfResults.forEach(r => {
+        const isSelected = r.tf_id === activeTfId;
+        const rowStyle = isSelected ? "background: rgba(99, 102, 241, 0.15); font-weight: bold;" : "";
+        const rowClass = isSelected ? "tf-row selected-tf-row" : "tf-row";
+        
+        html += `
+            <tr class="${rowClass}" data-tf-id="${r.tf_id}" data-tf-name="${r.tf_name}" style="cursor: pointer; ${rowStyle}">
+                <td><strong>${r.tf_name}</strong></td>
+                <td class="text-center">${r.k} / ${r.M}</td>
+                <td class="text-right">${r.pvalue.toExponential(3)}</td>
+                <td class="text-right">${r.fdr.toExponential(3)}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Add Row Click Event to fetch network for specific TF
+    container.querySelectorAll(".tf-row").forEach(row => {
+        row.addEventListener("click", () => {
+            const tfId = row.getAttribute("data-tf-id");
+            
+            // Update selected indicator classes
+            container.querySelectorAll(".tf-row").forEach(r => {
+                r.classList.remove("selected-tf-row");
+                r.style.background = "";
+                r.style.fontWeight = "normal";
+            });
+            row.classList.add("selected-tf-row");
+            row.style.background = "rgba(99, 102, 241, 0.15)";
+            row.style.fontWeight = "bold";
+            
+            // Re-render Cytoscape network focused on this TF
+            renderNetworkGraph();
+        });
+    });
+}
+
+function highlightTFInNetwork(tfName) {
+    if (!cyInstance) return;
+    
+    cyInstance.batch(() => {
+        // 1. Reset styles
+        cyInstance.nodes().style({
+            'opacity': 0.25,
+            'border-color': '#cbd5e1'
+        });
+        cyInstance.edges().style({
+            'opacity': 0.1,
+            'line-color': '#e2e8f0'
+        });
+        
+        // 2. Find TF node
+        const tfNode = cyInstance.getElementById(tfName);
+        if (tfNode.length > 0) {
+            tfNode.style({
+                'opacity': 1.0,
+                'border-color': '#4f46e5',
+                'border-width': '4px',
+                'width': '65px',
+                'height': '65px'
+            });
+            
+            // 3. Find connected targets and edges
+            const connectedEdges = tfNode.connectedEdges();
+            connectedEdges.style({
+                'opacity': 1.0,
+                'line-color': '#4f46e5',
+                'width': '3.5px'
+            });
+            
+            connectedEdges.targets().style({
+                'opacity': 1.0,
+                'border-color': '#1e293b',
+                'border-width': '2.5px'
+            });
+            
+            // Pan and zoom to TF node and targets
+            cyInstance.animate({
+                fit: {
+                    eles: tfNode.union(connectedEdges.targets()),
+                    padding: 50
+                },
+                duration: 500
+            });
+        } else {
+            // TF is not in network viewport, reset to show all
+            cyInstance.nodes().style('opacity', 1.0);
+            cyInstance.edges().style('opacity', 0.85);
+            cyInstance.fit();
+            alert(`전사인자 "${tfName}"가 현재 가시 노드 내에 포함되어 있지 않습니다.`);
+        }
     });
 }
 
@@ -2510,4 +3242,595 @@ function exportKeggMap(format, filename) {
         console.error(err);
         alert("KEGG 지도 캡처 및 내보내기 실패: " + err.message);
     });
+}
+
+// ----------------------------------------------------------------------
+// 13. Promoter Sequence Motif Discovery
+// ----------------------------------------------------------------------
+function renderMotifLogoPlaceholder() {
+    const chartDiv = document.getElementById("motif-logo-chart");
+    if (!chartDiv) return;
+    
+    chartDiv.innerHTML = `
+        <div class="text-center text-muted" style="padding: 100px 0;">
+            <i class="fa-solid fa-wand-magic-sparkles fa-3x mb-15" style="color: #cbd5e1;"></i>
+            <p style="font-size: 14px; font-weight: 500;">상단 '모티프 분석 실행' 버튼을 눌러 프로모터 모티프를 도출하세요.</p>
+        </div>
+    `;
+    
+    document.getElementById("motif-consensus-text").textContent = "N/A";
+    document.getElementById("motif-score-text").textContent = "N/A";
+}
+
+function runMotifAnalysis() {
+    if (gGenes.length === 0) {
+        alert("분석할 유전자 발현 데이터가 없습니다. 먼저 데이터를 로드해 주세요.");
+        return;
+    }
+    
+    const chartDiv = document.getElementById("motif-logo-chart");
+    const lenSelect = document.getElementById("motif-len-select");
+    const motifLen = lenSelect ? lenSelect.value : 8;
+    
+    chartDiv.innerHTML = `
+        <div style="text-align: center; padding-top: 150px; color: #64748b;">
+            <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+            <p style="margin-top: 10px; font-weight: 500;">프로모터 서열 획득 및 Gibbs Sampling 모티프 연산 중...</p>
+        </div>
+    `;
+    
+    // Calculate targetList based on current threshold
+    const log2fcThresh = parseFloat(document.getElementById("log2fc-thresh").value) || 0;
+    const pvalThresh = parseFloat(document.getElementById("pvalue-thresh").value) || 1.0;
+    const statType = document.getElementById("stat-type") ? document.getElementById("stat-type").value : "fdr";
+    const targetList = [];
+    gGenes.forEach(gene => {
+        const statVal = statType === "fdr" ? gene.fdr : gene.pvalue;
+        const passesLog2FC = Math.abs(gene.log2fc) >= log2fcThresh;
+        let passesPVal = true;
+        if (statType !== "none" && gIsReplicateMode) {
+            passesPVal = (statVal !== null && statVal <= pvalThresh);
+        }
+        if (passesLog2FC && passesPVal) {
+            targetList.push(gene.locus_tag);
+        }
+    });
+
+    if (targetList.length === 0) {
+        chartDiv.innerHTML = `
+            <div class="text-center text-warning" style="padding-top: 150px;">
+                <i class="fa-solid fa-triangle-exclamation fa-2x mb-10"></i>
+                <p>현재 필터 기준에 부합하는 유효한 DEG 유전자가 없습니다.<br>상단 필터 설정을 조정하여 유의미한 유전자를 확보해 주세요.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    fetch(`${API_URL}/api/motif_discovery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            genes: targetList,
+            motif_len: parseInt(motifLen)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success === false || !data.consensus) {
+            chartDiv.innerHTML = `
+                <div class="text-center text-danger" style="padding-top: 150px;">
+                    <i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i>
+                    <p>모티프 분석 실패: ${data.detail || "서열 정보가 부족합니다."}</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Update summary text
+        document.getElementById("motif-consensus-text").textContent = data.consensus || "N/A";
+        document.getElementById("motif-score-text").textContent = `${data.score ? data.score.toFixed(3) : "0"} bits`;
+        
+        // Draw Sequence Logo stacked bar chart
+        const logoData = data.logo || [];
+        if (logoData.length === 0) {
+            chartDiv.innerHTML = `<div class="text-center text-muted" style="padding-top: 150px;">모티프 데이터가 비어 있습니다.</div>`;
+            return;
+        }
+        
+        // Prepare arrays for Plotly traces
+        const positions = logoData.map(d => `Pos ${d.position}`);
+        const bitsA = logoData.map(d => d.heights ? d.heights.A || 0.0 : 0.0);
+        const bitsC = logoData.map(d => d.heights ? d.heights.C || 0.0 : 0.0);
+        const bitsG = logoData.map(d => d.heights ? d.heights.G || 0.0 : 0.0);
+        const bitsT = logoData.map(d => d.heights ? d.heights.T || 0.0 : 0.0);
+        
+        // Trace A (Emerald Green)
+        const traceA = {
+            x: positions,
+            y: bitsA,
+            name: 'A',
+            type: 'bar',
+            marker: { color: '#10b981' },
+            hovertemplate: 'Position %{x}<br>A: %{y:.3f} bits<extra></extra>'
+        };
+        
+        // Trace C (Blue)
+        const traceC = {
+            x: positions,
+            y: bitsC,
+            name: 'C',
+            type: 'bar',
+            marker: { color: '#3b82f6' },
+            hovertemplate: 'Position %{x}<br>C: %{y:.3f} bits<extra></extra>'
+        };
+        
+        // Trace G (Orange/Amber)
+        const traceG = {
+            x: positions,
+            y: bitsG,
+            name: 'G',
+            type: 'bar',
+            marker: { color: '#f59e0b' },
+            hovertemplate: 'Position %{x}<br>G: %{y:.3f} bits<extra></extra>'
+        };
+        
+        // Trace T (Red)
+        const traceT = {
+            x: positions,
+            y: bitsT,
+            name: 'T',
+            type: 'bar',
+            marker: { color: '#ef4444' },
+            hovertemplate: 'Position %{x}<br>T: %{y:.3f} bits<extra></extra>'
+        };
+        
+        const layout = {
+            title: {
+                text: `Promoter Consensus Motif: "${data.consensus}" (Length: ${motifLen} bp)`,
+                font: { size: 16, color: '#0f172a', family: 'Inter, sans-serif' }
+            },
+            xaxis: {
+                title: 'Sequence Position (5\' -> 3\')',
+                tickfont: { size: 12, color: '#475569' }
+            },
+            yaxis: {
+                title: 'Information Content (Bits)',
+                gridcolor: '#e2e8f0',
+                range: [0, 2.1], // Maximum information content for DNA is 2 bits
+                tickfont: { size: 12, color: '#475569' }
+            },
+            barmode: 'stack', // Stacked bars mock the sequence logo
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 60, r: 20, t: 60, b: 60 },
+            legend: {
+                orientation: 'h',
+                yanchor: 'bottom',
+                y: 1.02,
+                xanchor: 'right',
+                x: 1
+            }
+        };
+        
+        chartDiv.innerHTML = "";
+        Plotly.newPlot('motif-logo-chart', [traceT, traceG, traceC, traceA], layout, {responsive: true});
+    })
+    .catch(err => {
+        console.error("Motif 분석 중 오류 발생:", err);
+        chartDiv.innerHTML = `
+            <div class="text-center text-danger" style="padding-top: 150px;">
+                <i class="fa-solid fa-circle-exclamation fa-2x mb-10"></i>
+                <p>모티프 분석 오류: ${err.message}</p>
+            </div>
+        `;
+    });
+}
+
+// ----------------------------------------------------------------------
+// 10. Advanced Strain Analysis Integration
+// ----------------------------------------------------------------------
+function initAdvancedAnalysisBindings() {
+    // Subtab toggles
+    const subtabTfBtn = document.getElementById("btn-subtab-tf");
+    const subtabBottleneckBtn = document.getElementById("btn-subtab-bottleneck");
+    const subtabStressBtn = document.getElementById("btn-subtab-stress");
+
+    const tfArea = document.getElementById("subtab-tf-area");
+    const bottleneckArea = document.getElementById("subtab-bottleneck-area");
+    const stressArea = document.getElementById("subtab-stress-area");
+
+    const resetSubtabs = () => {
+        [subtabTfBtn, subtabBottleneckBtn, subtabStressBtn].forEach(btn => {
+            if (btn) {
+                btn.classList.remove("active");
+                btn.style.color = "var(--text-muted)";
+                btn.style.borderColor = "var(--border-color)";
+            }
+        });
+        [tfArea, bottleneckArea, stressArea].forEach(area => {
+            if (area) area.style.display = "none";
+        });
+    };
+
+    if (subtabTfBtn) {
+        subtabTfBtn.addEventListener("click", () => {
+            resetSubtabs();
+            subtabTfBtn.classList.add("active");
+            subtabTfBtn.style.color = "var(--text-primary)";
+            subtabTfBtn.style.borderColor = "var(--primary-color)";
+            if (tfArea) tfArea.style.display = "block";
+        });
+    }
+
+    if (subtabBottleneckBtn) {
+        subtabBottleneckBtn.addEventListener("click", () => {
+            resetSubtabs();
+            subtabBottleneckBtn.classList.add("active");
+            subtabBottleneckBtn.style.color = "var(--text-primary)";
+            subtabBottleneckBtn.style.borderColor = "var(--primary-color)";
+            if (bottleneckArea) bottleneckArea.style.display = "block";
+            populateBottleneckPathwayDropdown();
+        });
+    }
+
+    if (subtabStressBtn) {
+        subtabStressBtn.addEventListener("click", () => {
+            resetSubtabs();
+            subtabStressBtn.classList.add("active");
+            subtabStressBtn.style.color = "var(--text-primary)";
+            subtabStressBtn.style.borderColor = "var(--primary-color)";
+            if (stressArea) stressArea.style.display = "block";
+        });
+    }
+
+    // Action button listeners
+    const btnRunTf = document.getElementById("btn-run-tf-analysis");
+    if (btnRunTf) btnRunTf.addEventListener("click", runTFActivityAnalysis);
+
+    const btnRunBottleneck = document.getElementById("btn-run-bottleneck");
+    if (btnRunBottleneck) btnRunBottleneck.addEventListener("click", runMetabolicBottleneckScan);
+
+    const btnRunStress = document.getElementById("btn-run-stress-prediction");
+    if (btnRunStress) btnRunStress.addEventListener("click", runStressSpectrumPrediction);
+
+    // Toggle WT / Mutant traces in stress radar chart
+    const btnToggleWT = document.getElementById("btn-stress-toggle-wt");
+    const btnToggleMut = document.getElementById("btn-stress-toggle-mut");
+
+    if (btnToggleWT) {
+        btnToggleWT.addEventListener("click", () => {
+            btnToggleWT.classList.toggle("active");
+            renderStressRadarChart();
+        });
+    }
+
+    if (btnToggleMut) {
+        btnToggleMut.addEventListener("click", () => {
+            btnToggleMut.classList.toggle("active");
+            renderStressRadarChart();
+        });
+    }
+}
+
+// 1) TF Activity Analysis
+function runTFActivityAnalysis() {
+    const chartDiv = document.getElementById("tf-activity-chart");
+    chartDiv.innerHTML = `<div style="text-align:center; padding-top:150px; color:#64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;">전사인자 활성 추론 계산 중...</p></div>`;
+
+    fetch(`${API_URL}/api/tf_activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("TF 분석 API 실패");
+        return res.json();
+    })
+    .then(data => {
+        if (!data.success || data.results.length === 0) {
+            chartDiv.innerHTML = `<div style="text-align:center; padding-top:150px; color:#ef4444;">유의한 전사인자 표적 농축 결과를 도출하지 못했습니다.</div>`;
+            return;
+        }
+
+        const results = data.results;
+        const tfNames = results.map(r => r.tf);
+        const scores = results.map(r => r.score);
+        const colors = scores.map(s => s >= 0 ? 'rgba(99, 102, 241, 0.85)' : 'rgba(239, 68, 68, 0.85)');
+
+        const trace = {
+            x: scores,
+            y: tfNames,
+            type: 'bar',
+            orientation: 'h',
+            marker: {
+                color: colors,
+                line: { color: 'rgba(0, 0, 0, 0.1)', width: 1 }
+            },
+            text: scores.map(s => `${s >= 0 ? '+' : ''}${s}`),
+            textposition: 'auto',
+            customdata: results
+        };
+
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            xaxis: {
+                title: '활성 활성화도 지수 (PSRS Score)',
+                gridcolor: '#e2e8f0',
+                zerolinecolor: '#cbd5e1'
+            },
+            yaxis: {
+                autorange: 'reversed',
+                gridcolor: '#e2e8f0'
+            },
+            margin: { l: 80, r: 30, t: 10, b: 60 }
+        };
+
+        chartDiv.innerHTML = "";
+        const myPlot = document.createElement("div");
+        myPlot.style.width = "100%";
+        myPlot.style.height = "100%";
+        chartDiv.appendChild(myPlot);
+
+        Plotly.newPlot(myPlot, [trace], layout, {responsive: true});
+
+        myPlot.on('plotly_click', function(clickData) {
+            const point = clickData.points[0];
+            const tfData = point.customdata;
+            displayTfTargetDEGs(tfData);
+        });
+
+        displayTfTargetDEGs(results[0]);
+    })
+    .catch(err => {
+        console.error(err);
+        chartDiv.innerHTML = `<div style="text-align:center; padding-top:150px; color:#ef4444;">오류 발생: ${err.message}</div>`;
+    });
+}
+
+function displayTfTargetDEGs(tfData) {
+    document.getElementById("tf-selected-desc").innerHTML = `
+        <strong>${tfData.tf}</strong>: ${tfData.description}<br>
+        <span class="text-muted" style="font-size:11px;">P-value: ${tfData.p_value.toExponential(3)} | 상태: <span style="font-weight:bold; color:${tfData.state==='Activated'?'#4f46e5':'#dc2626'}">${tfData.state}</span></span>
+    `;
+
+    const container = document.getElementById("tf-target-list-container");
+    container.innerHTML = "";
+
+    if (tfData.target_degs.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding-top:40px; font-size:12px;">유의미한 표적 발현 유전자(DEG)가 존재하지 않습니다.</div>`;
+        return;
+    }
+
+    tfData.target_degs.forEach(sym => {
+        const row = document.createElement("div");
+        row.className = "tf-gene-row";
+        
+        const matched = gGenes.find(g => g.gene_symbol.toUpperCase() === sym.toUpperCase());
+        const log2fc = matched ? matched.log2fc : 0.0;
+        const colorClass = log2fc >= 0 ? "up-text" : "down-text";
+
+        row.innerHTML = `
+            <span><strong>${sym}</strong></span>
+            <span class="${colorClass}" style="font-weight:bold;">${log2fc > 0 ? '+' : ''}${log2fc} Log2FC</span>
+        `;
+        container.appendChild(row);
+    });
+}
+
+// 2) Metabolic Bottleneck Scan
+function populateBottleneckPathwayDropdown() {
+    const select = document.getElementById("bottleneck-pathway-select");
+    if (!select) return;
+    if (select.children.length > 0) return;
+
+    fetch(`${API_URL}/api/pathways`)
+    .then(res => res.json())
+    .then(data => {
+        select.innerHTML = "";
+        data.pathways.forEach(path => {
+            const opt = document.createElement("option");
+            opt.value = path.pathway_id;
+            opt.textContent = `${path.pathway_id.replace("path:", "")} - ${path.description.length > 25 ? path.description.substring(0, 25) + '...' : path.description}`;
+            select.appendChild(opt);
+        });
+    })
+    .catch(err => console.error("KEGG 목록 로드 실패:", err));
+}
+
+function runMetabolicBottleneckScan() {
+    const select = document.getElementById("bottleneck-pathway-select");
+    if (!select) return;
+    const pathwayId = select.value;
+
+    const tbody = document.getElementById("bottleneck-table-body");
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:50px 0;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;">대사 경로 병목 지점 스캔 중...</p></td></tr>`;
+
+    fetch(`${API_URL}/api/metabolic_bottleneck`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pathway_id: pathwayId })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("병목 분석 API 실패");
+        return res.json();
+    })
+    .then(data => {
+        tbody.innerHTML = "";
+        if (!data.success || data.candidates.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#64748b; padding:40px 0;">본 경로에는 임계 범위 내에 걸려있는 병목 의심 유전자가 검출되지 않았습니다.</td></tr>`;
+            return;
+        }
+
+        data.candidates.forEach(cand => {
+            const row = document.createElement("tr");
+            const classSeverity = cand.severity === "High" ? "severity-high" : "severity-medium";
+            
+            row.innerHTML = `
+                <td><code>${cand.locus_tag}</code></td>
+                <td><strong>${cand.gene_symbol}</strong></td>
+                <td>${cand.wt_val}</td>
+                <td>${cand.mutant_val}</td>
+                <td class="${cand.log2fc >= 0 ? 'up-text' : 'down-text'}">${cand.log2fc > 0 ? '+' : ''}${cand.log2fc}</td>
+                <td style="color:#475569; font-size:12px;">${cand.reason}</td>
+                <td><span class="${classSeverity}">${cand.severity}</span></td>
+                <td style="font-size:12px; color:#1e293b; line-height:1.4;">${cand.guide}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    })
+    .catch(err => {
+        console.error(err);
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:40px 0;">분석 실패: ${err.message}</td></tr>`;
+    });
+}
+
+// 3) Stress Spectrum Prediction (Radar Chart)
+let gLastStressData = null;
+
+function runStressSpectrumPrediction() {
+    const chartDiv = document.getElementById("stress-radar-chart");
+    chartDiv.innerHTML = `<div style="text-align:center; padding-top:130px; color:#64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;">스트레스 저항성 판정 연산 중...</p></div>`;
+
+    const reportContainer = document.getElementById("stress-report-container");
+    reportContainer.innerHTML = "";
+
+    fetch(`${API_URL}/api/stress_prediction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("스트레스 분석 API 실패");
+        return res.json();
+    })
+    .then(data => {
+        if (!data.success || data.profiles.length === 0) {
+            chartDiv.innerHTML = `<div style="text-align:center; padding-top:130px; color:#ef4444;">유효한 매칭 데이터를 확보하지 못했습니다.</div>`;
+            return;
+        }
+
+        gLastStressData = data.profiles;
+        
+        // Render Chart based on toggles
+        renderStressRadarChart();
+
+        // Render Report
+        data.profiles.forEach(p => {
+            const card = document.createElement("div");
+            card.style.border = "1px solid var(--border-color)";
+            card.style.borderRadius = "8px";
+            card.style.padding = "12px";
+            card.style.background = "#ffffff";
+            
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <strong>${p.name}</strong>
+                    <span class="${p.class_name}">${p.status} (PSRS: ${p.score})</span>
+                </div>
+                <p style="font-size:12px; color:#475569; line-height:1.4; margin-bottom:0;">${p.verdict}</p>
+            `;
+            reportContainer.appendChild(card);
+        });
+    })
+    .catch(err => {
+        console.error(err);
+        chartDiv.innerHTML = `<div style="text-align:center; padding-top:130px; color:#ef4444;">오류: ${err.message}</div>`;
+    });
+}
+
+function renderStressRadarChart() {
+    const chartDiv = document.getElementById("stress-radar-chart");
+    if (!gLastStressData || gLastStressData.length === 0) return;
+
+    const btnWT = document.getElementById("btn-stress-toggle-wt");
+    const btnMut = document.getElementById("btn-stress-toggle-mut");
+
+    const showWT = btnWT ? btnWT.classList.contains("active") : true;
+    const showMut = btnMut ? btnMut.classList.contains("active") : true;
+
+    // Styles update based on active class
+    if (btnWT) {
+        if (showWT) {
+            btnWT.style.background = "#fef2f2";
+            btnWT.style.color = "#dc2626";
+            btnWT.style.borderColor = "#fca5a5";
+        } else {
+            btnWT.style.background = "#ffffff";
+            btnWT.style.color = "var(--text-muted)";
+            btnWT.style.borderColor = "var(--border-color)";
+        }
+    }
+    if (btnMut) {
+        if (showMut) {
+            btnMut.style.background = "#e0e7ff";
+            btnMut.style.color = "#4f46e5";
+            btnMut.style.borderColor = "#a5b4fc";
+        } else {
+            btnMut.style.background = "#ffffff";
+            btnMut.style.color = "var(--text-muted)";
+            btnMut.style.borderColor = "var(--border-color)";
+        }
+    }
+
+    const thetaVals = gLastStressData.map(p => p.name);
+    thetaVals.push(thetaVals[0]); // circular wrap-around
+
+    const traces = [];
+
+    // 1) Wild-Type Trace (Red)
+    if (showWT) {
+        const wtScores = Array(gLastStressData.length + 1).fill(0.0);
+        traces.push({
+            type: 'scatterpolar',
+            r: wtScores,
+            theta: thetaVals,
+            name: '야생형 (WT)',
+            fill: 'toself',
+            fillcolor: 'rgba(239, 68, 68, 0.12)',
+            line: { color: 'rgba(239, 68, 68, 0.85)', width: 2 },
+            marker: { size: 6 }
+        });
+    }
+
+    // 2) Mutant Trace (Indigo/Blue)
+    if (showMut) {
+        const mutScores = gLastStressData.map(p => p.score);
+        mutScores.push(mutScores[0]);
+        traces.push({
+            type: 'scatterpolar',
+            r: mutScores,
+            theta: thetaVals,
+            name: '변이주 (Mutant)',
+            fill: 'toself',
+            fillcolor: 'rgba(99, 102, 241, 0.12)',
+            line: { color: 'rgba(99, 102, 241, 0.85)', width: 2 },
+            marker: { size: 6 }
+        });
+    }
+
+    const layout = {
+        polar: {
+            radialaxis: {
+                visible: true,
+                range: [-10, 10],
+                gridcolor: '#e2e8f0',
+                zerolinecolor: '#cbd5e1'
+            },
+            angularaxis: {
+                gridcolor: '#e2e8f0'
+            }
+        },
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 45, r: 45, t: 30, b: 30 },
+        showlegend: false
+    };
+
+    chartDiv.innerHTML = "";
+    const myPlot = document.createElement("div");
+    myPlot.style.width = "100%";
+    myPlot.style.height = "100%";
+    chartDiv.appendChild(myPlot);
+
+    Plotly.newPlot(myPlot, traces, layout, {responsive: true});
 }

@@ -1,0 +1,50 @@
+{
+  "GCN4": {
+    "description": "아미노산 생합성 전반을 활성화하는 Master Regulator",
+    "targets": ["YEL009C", "YGL184C", "YFR030W", "YOL140W", "YDR300C", "YJR109C", "YOR202W", "YHR208W", "YKL060C", "YAL012W", "YOR360C", "YDR007W"]
+  },
+  "HAP4": {
+    "description": "호흡 연쇄 및 미토콘드리아 생합성/대사 활성 조절 인자",
+    "targets": ["YKL016C", "YKL148C", "YKL085W", "YPL262W", "YDL066W", "YOR136W", "YLR174W", "YBL030C", "YFL018C", "YGR240C", "YHR051W", "YFL011W"]
+  },
+  "GAL4": {
+    "description": "갈락토오스 대사 경로 유도 전사인자",
+    "targets": ["YBR020W", "YMR318C", "YLR081W", "YDR009W", "YML051W", "YPL248C", "YBR018C", "YOR120W", "YHR210C"]
+  },
+  "RTG3": {
+    "description": "미토콘드리아 역행 조절(Retrograde) 및 아미노산 공급 회로 유도",
+    "targets": ["YDL174C", "YGL200C", "YDL066W", "YOR136W", "YLR174W", "YNL037C", "YBR291C", "YPR003C", "YBR106W", "YLR304C"]
+  },
+  "MSN2": {
+    "description": "일반적 환경 스트레스 반응(ESR) 활성화 인자 (MSN4와 협동)",
+    "targets": ["YFL014W", "YKL096W", "YML100W", "YGR142W", "YOR096W", "YHR087W", "YMR105C", "YLR258W", "YDR171W", "YBR072W", "YBL075C", "YDR258C"]
+  },
+  "MSN4": {
+    "description": "일반적 환경 스트레스 반응(ESR) 조절 전사인자",
+    "targets": ["YFL014W", "YML100W", "YHR087W", "YDR171W", "YBR072W", "YPL240C", "YOL150C", "YOR180C", "YDR074W", "YGR110W"]
+  },
+  "YAP1": {
+    "description": "산화 스트레스 및 독성 금속 내성 유도 전사인자",
+    "targets": ["YML116W", "YML007W", "YGL256W", "YGR209C", "YKL150W", "YDR453C", "YLL039C", "YML120C", "YKL026C", "YPL091W", "YDL124W", "YPL224C"]
+  },
+  "PDR1": {
+    "description": "약물 저항성 및 다제 물질 유출 펌프 발현 유도 전사인자",
+    "targets": ["YOR153W", "YLR139C", "YLR307C", "YPL058C", "YDR011W", "YAL054C", "YGL013C", "YOR328W", "YBR180W", "YOR273C"]
+  },
+  "SKN7": {
+    "description": "삼투압 조절(HOG 경로 연계) 및 세포벽 스트레스 복구 전사인자",
+    "targets": ["YKL165C", "YHR030C", "YDL229W", "YHR104W", "YLR288C", "YBR013C", "YOR360C", "YGL223C", "YNL271C", "YFL014W"]
+  },
+  "MBP1": {
+    "description": "G1/S 세포 주기 유전자 전사 복합체(MBF) 조절 인자",
+    "targets": ["YNL163C", "YNL102W", "YLR229C", "YPL190C", "YDL056W", "YDL227C", "YBR160W", "YOR074C", "YPL127C", "YDL102W", "YOR142W"]
+  },
+  "SWI4": {
+    "description": "G1/S 전사 조절 복합체(SBF) 성분 (SWI6과 복합체 형성)",
+    "targets": ["YLR229C", "YBR160W", "YOR074C", "YPL127C", "YLR182W", "YKL049C", "YBR146W", "YDR113C", "YOL001W"]
+  },
+  "SWI6": {
+    "description": "MBF 및 SBF 조절 복합체의 필수 공통 조절 단백질",
+    "targets": ["YNL102W", "YLR229C", "YPL190C", "YDL056W", "YBR160W", "YOR074C", "YPL127C", "YKL049C", "YDR113C", "YAR007C"]
+  }
+}

@@ -803,15 +803,16 @@ body {
     display: grid;
     grid-template-columns: 300px 1fr;
     gap: 24px;
-    height: 600px;
+    height: auto;
+    min-height: 600px;
 }
 
 .heatmap-controls-card {
-    height: 100%;
+    height: fit-content;
 }
 
 .heatmap-chart-card {
-    height: 100%;
+    height: auto;
     display: flex;
     flex-direction: column;
 }
@@ -1263,4 +1264,85 @@ body {
         transform: scale(1.06);
         box-shadow: 0 0 18px #ff3366, 0 0 35px #ff3366;
     }
+}
+
+/* Advanced Analysis Subtabs & Status styles */
+.subtab-btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.subtab-btn:hover {
+    background-color: #f1f5f9 !important;
+    border-color: #94a3b8 !important;
+}
+
+.subtab-btn.active {
+    background-color: #f1f5f9 !important;
+    border-color: var(--primary-color) !important;
+    color: var(--primary-color) !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Stress status colors */
+.resistant-status {
+    background-color: #d1fae5;
+    color: #065f46;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 12px;
+    display: inline-block;
+}
+
+.sensitive-status {
+    background-color: #fee2e2;
+    color: #991b1b;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 12px;
+    display: inline-block;
+}
+
+.neutral-status {
+    background-color: #f1f5f9;
+    color: #334155;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 12px;
+    display: inline-block;
+}
+
+.severity-high {
+    color: #ef4444;
+    background-color: #fee2e2;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+.severity-medium {
+    color: #f59e0b;
+    background-color: #fef3c7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+.tf-gene-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom: 1px dashed #e2e8f0;
+    font-size: 12px;
+}
+.tf-gene-row:last-child {
+    border-bottom: none;
+}
+.tf-gene-row:hover {
+    background-color: #f1f5f9;
 }
