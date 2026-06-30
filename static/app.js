@@ -3434,20 +3434,22 @@ function initAdvancedAnalysisBindings() {
     const subtabTfBtn = document.getElementById("btn-subtab-tf");
     const subtabBottleneckBtn = document.getElementById("btn-subtab-bottleneck");
     const subtabStressBtn = document.getElementById("btn-subtab-stress");
+    const subtabReporterBtn = document.getElementById("btn-subtab-reporter");
 
     const tfArea = document.getElementById("subtab-tf-area");
     const bottleneckArea = document.getElementById("subtab-bottleneck-area");
     const stressArea = document.getElementById("subtab-stress-area");
+    const reporterArea = document.getElementById("subtab-reporter-area");
 
     const resetSubtabs = () => {
-        [subtabTfBtn, subtabBottleneckBtn, subtabStressBtn].forEach(btn => {
+        [subtabTfBtn, subtabBottleneckBtn, subtabStressBtn, subtabReporterBtn].forEach(btn => {
             if (btn) {
                 btn.classList.remove("active");
                 btn.style.color = "var(--text-muted)";
                 btn.style.borderColor = "var(--border-color)";
             }
         });
-        [tfArea, bottleneckArea, stressArea].forEach(area => {
+        [tfArea, bottleneckArea, stressArea, reporterArea].forEach(area => {
             if (area) area.style.display = "none";
         });
     };
@@ -3483,6 +3485,16 @@ function initAdvancedAnalysisBindings() {
         });
     }
 
+    if (subtabReporterBtn) {
+        subtabReporterBtn.addEventListener("click", () => {
+            resetSubtabs();
+            subtabReporterBtn.classList.add("active");
+            subtabReporterBtn.style.color = "var(--text-primary)";
+            subtabReporterBtn.style.borderColor = "var(--primary-color)";
+            if (reporterArea) reporterArea.style.display = "block";
+        });
+    }
+
     // Action button listeners
     const btnRunTf = document.getElementById("btn-run-tf-analysis");
     if (btnRunTf) btnRunTf.addEventListener("click", runTFActivityAnalysis);
@@ -3492,6 +3504,9 @@ function initAdvancedAnalysisBindings() {
 
     const btnRunStress = document.getElementById("btn-run-stress-prediction");
     if (btnRunStress) btnRunStress.addEventListener("click", runStressSpectrumPrediction);
+
+    const btnRunReporter = document.getElementById("btn-run-reporter");
+    if (btnRunReporter) btnRunReporter.addEventListener("click", runReporterMetaboliteAnalysis);
 
     // Toggle WT / Mutant traces in stress radar chart
     const btnToggleWT = document.getElementById("btn-stress-toggle-wt");
@@ -3833,4 +3848,126 @@ function renderStressRadarChart() {
     chartDiv.appendChild(myPlot);
 
     Plotly.newPlot(myPlot, traces, layout, {responsive: true});
+}
+
+// 4) Reporter Metabolites Analysis
+function runReporterMetaboliteAnalysis() {
+    const chartDiv = document.getElementById("reporter-score-chart");
+    chartDiv.innerHTML = `<div style="text-align:center; padding-top:150px; color:#64748b;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;">리포터 대사물질 스캔 중...</p></div>`;
+
+    fetch(`${API_URL}/api/reporter_metabolites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("리포터 분석 API 실패");
+        return res.json();
+    })
+    .then(data => {
+        if (!data.success || data.results.length === 0) {
+            chartDiv.innerHTML = `<div style="text-align:center; padding-top:150px; color:#ef4444;">유의한 리포터 대사물질을 탐지하지 못했습니다.</div>`;
+            return;
+        }
+
+        const results = data.results;
+        // Take top 15 metabolites for better readability
+        const topResults = results.slice(0, 15);
+        const metNames = topResults.map(r => `${r.name} (${r.compartment})`);
+        const scores = topResults.map(r => r.score);
+        
+        // Dynamic colors based on significance score (threshold 1.5)
+        const colors = scores.map(s => s >= 1.5 ? 'rgba(139, 92, 246, 0.85)' : 'rgba(148, 163, 184, 0.85)');
+
+        const trace = {
+            x: scores,
+            y: metNames,
+            type: 'bar',
+            orientation: 'h',
+            marker: {
+                color: colors,
+                line: { color: 'rgba(0, 0, 0, 0.1)', width: 1 }
+            },
+            text: scores.map(s => `${s}`),
+            textposition: 'auto',
+            customdata: topResults
+        };
+
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            xaxis: {
+                title: 'Reporter Score (Z-score)',
+                gridcolor: '#e2e8f0',
+                zerolinecolor: '#cbd5e1'
+            },
+            yaxis: {
+                autorange: 'reversed',
+                gridcolor: '#e2e8f0'
+            },
+            margin: { l: 150, r: 30, t: 10, b: 60 }
+        };
+
+        chartDiv.innerHTML = "";
+        const myPlot = document.createElement("div");
+        myPlot.style.width = "100%";
+        myPlot.style.height = "100%";
+        chartDiv.appendChild(myPlot);
+
+        Plotly.newPlot(myPlot, [trace], layout, {responsive: true});
+
+        myPlot.on('plotly_click', function(clickData) {
+            const point = clickData.points[0];
+            const metData = point.customdata;
+            displayReporterDetailTable(metData);
+        });
+
+        // Default load the first one
+        displayReporterDetailTable(topResults[0]);
+    })
+    .catch(err => {
+        console.error(err);
+        chartDiv.innerHTML = `<div style="text-align:center; padding-top:150px; color:#ef4444;">오류 발생: ${err.message}</div>`;
+    });
+}
+
+function displayReporterDetailTable(metData) {
+    const desc = document.getElementById("reporter-selected-desc");
+    const body = document.getElementById("reporter-detail-body");
+
+    if (!metData) {
+        desc.textContent = "조회된 데이터가 없습니다.";
+        body.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #94a3b8; padding: 40px 0;">조회된 상세 정보가 없습니다.</td></tr>`;
+        return;
+    }
+
+    // Compartment class matching
+    let compClass = 'badge-comp-cytosol';
+    if (metData.compartment === 'mitochondria') {
+        compClass = 'badge-comp-mitochondria';
+    } else if (metData.compartment === 'extracellular') {
+        compClass = 'badge-comp-extracellular';
+    }
+
+    desc.innerHTML = `선택된 대사물질: <strong>${metData.name}</strong> <span class="badge-compartment ${compClass}">${metData.compartment}</span> (연관 유전자: ${metData.gene_count}개)`;
+
+    body.innerHTML = "";
+    metData.genes.forEach(g => {
+        const fc = parseFloat(g.log2fc).toFixed(3);
+        const pVal = parseFloat(g.p_value).toExponential(3);
+        
+        let fcColor = 'var(--text-primary)';
+        if (g.log2fc >= 0.8) fcColor = 'var(--up-red)';
+        else if (g.log2fc <= -0.8) fcColor = 'var(--down-blue)';
+
+        const tr = document.createElement("tr");
+        tr.style.borderBottom = "1px solid var(--border-color)";
+        tr.innerHTML = `
+            <td style="padding: 8px; font-weight: 600;">${g.gene_symbol}</td>
+            <td style="padding: 8px; color: #64748b;">${g.locus_tag}</td>
+            <td style="padding: 8px; text-align: right; color: ${fcColor}; font-weight: 500;">${g.log2fc >= 0 ? '+' : ''}${fc}</td>
+            <td style="padding: 8px; text-align: right; color: #64748b;">${pVal}</td>
+        `;
+        body.appendChild(tr);
+    });
 }

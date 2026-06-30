@@ -1305,6 +1305,102 @@ def get_stress_prediction(payload: dict):
         
     return {"success": True, "profiles": stress_profiles}
 
+# ----------------------------------------------------------------------
+# 4. Reporter Metabolites Analyzer API
+# ----------------------------------------------------------------------
+@app.post("/api/reporter_metabolites")
+def get_reporter_metabolites(payload: dict = None):
+    if not os.path.exists(PARSED_DATA_PATH):
+        raise HTTPException(status_code=400, detail="먼저 RNA-seq 파일을 업로드해주세요.")
+        
+    with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+        genes = json.load(f)
+        
+    net_path = "data/yeast_metabolite_net.json"
+    if not os.path.exists(net_path):
+        raise HTTPException(status_code=500, detail="대사물질 네트워크 데이터베이스를 찾을 수 없습니다.")
+        
+    with open(net_path, "r", encoding="utf-8") as f:
+        metabolite_db = json.load(f)
+        
+    gene_map = {g["locus_tag"].upper(): g for g in genes}
+    
+    # 1. Calculate Z-scores for all genes in the dataset
+    all_z_scores = []
+    gene_z_map = {}
+    
+    for g in genes:
+        locus = g["locus_tag"].upper()
+        # Default p-value if missing
+        p_val = g.get("fdr") if g.get("fdr") is not None else g.get("p_value")
+        
+        if p_val is not None:
+            # Bound p-value to avoid inf
+            p_val_bounded = max(1e-15, min(0.999999, float(p_val)))
+            z = stats.norm.ppf(1.0 - p_val_bounded)
+        else:
+            z = 0.0
+            
+        gene_z_map[locus] = z
+        all_z_scores.append(z)
+        
+    # Calculate background stats
+    if all_z_scores:
+        bg_mean = np.mean(all_z_scores)
+        bg_std = np.std(all_z_scores)
+        if bg_std == 0:
+            bg_std = 1.0
+    else:
+        bg_mean = 0.0
+        bg_std = 1.0
+        
+    reporter_results = []
+    
+    # 2. Score each metabolite
+    for met_id, met_info in metabolite_db.items():
+        genes_in_db = [g.upper() for g in met_info["genes"]]
+        matched_genes = [g for g in genes_in_db if g in gene_map]
+        
+        if not matched_genes:
+            continue
+            
+        n = len(matched_genes)
+        z_sum = sum(gene_z_map.get(g, 0.0) for g in matched_genes)
+        
+        # Standardized Z-score of sample mean
+        # Z_reporter = (mean - bg_mean) / (bg_std / sqrt(n))
+        z_reporter = (z_sum - n * bg_mean) / (bg_std * np.sqrt(n))
+        
+        # Gather associated gene details
+        associated_genes = []
+        for g in matched_genes:
+            g_info = gene_map[g]
+            associated_genes.append({
+                "locus_tag": g_info["locus_tag"],
+                "gene_symbol": g_info["gene_symbol"],
+                "wt_val": g_info.get("wt_val", 0.0),
+                "mutant_val": g_info.get("mutant_val", 0.0),
+                "log2fc": g_info.get("log2fc", 0.0),
+                "p_value": g_info.get("fdr") if g_info.get("fdr") is not None else g_info.get("p_value", 1.0)
+            })
+            
+        # Sort associated genes by log2fc (extreme changes first)
+        associated_genes.sort(key=lambda x: abs(x["log2fc"]), reverse=True)
+        
+        reporter_results.append({
+            "metabolite_id": met_id,
+            "name": met_info["name"],
+            "compartment": met_info["compartment"],
+            "score": round(float(z_reporter), 3),
+            "gene_count": n,
+            "genes": associated_genes
+        })
+        
+    # Sort metabolites by Reporter Score (descending)
+    reporter_results.sort(key=lambda x: x["score"], reverse=True)
+    
+    return {"success": True, "results": reporter_results}
+
 @app.get("/api/pathways")
 def get_pathways():
     """Get list of yeast KEGG pathways."""

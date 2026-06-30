@@ -1,0 +1,187 @@
+{
+  "d-glucose": {
+    "name": "D-Glucose",
+    "compartment": "extracellular",
+    "genes": ["YDL245C", "YJR158W", "YEL069C", "YDR345C", "YBR302C", "YDR384C"]
+  },
+  "glucose-6-phosphate": {
+    "name": "Glucose 6-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YBR196C", "YFR053C", "YGL253W", "YHR007C", "YNL241C", "YDR137W"]
+  },
+  "fructose-6-phosphate": {
+    "name": "Fructose 6-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YBR196C", "YFR053C", "YGL253W", "YGR240C", "YMR105C", "YLR345W", "YLR377C"]
+  },
+  "fructose-1,6-bisphosphate": {
+    "name": "Fructose 1,6-bisphosphate",
+    "compartment": "cytosol",
+    "genes": ["YGR240C", "YMR105C", "YKL060C", "YAL038W"]
+  },
+  "dhap": {
+    "name": "Dihydroxyacetone phosphate",
+    "compartment": "cytosol",
+    "genes": ["YAL038W", "YDL052C", "YOL059W", "YPR113W", "YDL022W", "YOL119C"]
+  },
+  "g3p": {
+    "name": "Glyceraldehyde 3-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YDL052C", "YJR009C", "YGR192C", "YJL052W", "YGR043C", "YGL253W"]
+  },
+  "1,3-bisphosphoglycerate": {
+    "name": "1,3-Bisphosphoglycerate",
+    "compartment": "cytosol",
+    "genes": ["YJR009C", "YGR192C", "YJL052W", "YGR204W"]
+  },
+  "3-phosphoglycerate": {
+    "name": "3-Phosphoglycerate",
+    "compartment": "cytosol",
+    "genes": ["YGR204W", "YAL043C", "YCR012W", "YBL056W", "YDL021W"]
+  },
+  "2-phosphoglycerate": {
+    "name": "2-Phosphoglycerate",
+    "compartment": "cytosol",
+    "genes": ["YAL043C", "YCR012W", "YGR204W", "YOR307C"]
+  },
+  "pep": {
+    "name": "Phosphoenolpyruvate",
+    "compartment": "cytosol",
+    "genes": ["YGR204W", "YOR307C", "YAL038W", "YGR240C", "YKL060C", "YOR347C"]
+  },
+  "pyruvate": {
+    "name": "Pyruvate",
+    "compartment": "cytosol",
+    "genes": ["YAL038W", "YGR240C", "YKL060C", "YGL256W", "YPL262W", "YDL178W", "YJR009C", "YHR104W"]
+  },
+  "acetaldehyde": {
+    "name": "Acetaldehyde",
+    "compartment": "cytosol",
+    "genes": ["YLR134W", "YDL168W", "YMR170C", "YMR303C", "YOL086C", "YPL088W"]
+  },
+  "ethanol": {
+    "name": "Ethanol",
+    "compartment": "cytosol",
+    "genes": ["YMR303C", "YOL086C", "YPL088W", "YAL060W", "YDL168W", "YBR145W"]
+  },
+  "acetyl-coa": {
+    "name": "Acetyl-CoA",
+    "compartment": "cytosol",
+    "genes": ["YPL095C", "YAL054C", "YBR222C", "YGR019W", "YLR355C", "YOR347C"]
+  },
+  "mitochondrial acetyl-coa": {
+    "name": "Acetyl-CoA",
+    "compartment": "mitochondria",
+    "genes": ["YBR222C", "YLR355C", "YNL117W", "YFL018C"]
+  },
+  "citrate": {
+    "name": "Citrate",
+    "compartment": "mitochondria",
+    "genes": ["YLR301W", "YPR002W", "YDL066W", "YNR001C", "YKL006W"]
+  },
+  "isocitrate": {
+    "name": "Isocitrate",
+    "compartment": "mitochondria",
+    "genes": ["YDL066W", "YLR174W", "YNL009W"]
+  },
+  "alpha-ketoglutarate": {
+    "name": "alpha-Ketoglutarate",
+    "compartment": "mitochondria",
+    "genes": ["YNL009W", "YDL178W", "YDR234W", "YGL202W", "YDR148C"]
+  },
+  "succinyl-coa": {
+    "name": "Succinyl-CoA",
+    "compartment": "mitochondria",
+    "genes": ["YDR234W", "YOR142W", "YOR187W"]
+  },
+  "succinate": {
+    "name": "Succinate",
+    "compartment": "mitochondria",
+    "genes": ["YOR142W", "YOR187W", "YKL141W", "YLL041C", "YPL262W"]
+  },
+  "fumarate": {
+    "name": "Fumarate",
+    "compartment": "mitochondria",
+    "genes": ["YKL141W", "YLL041C", "YPL262W", "YOL126C", "YKL085W"]
+  },
+  "l-malate": {
+    "name": "L-Malate",
+    "compartment": "mitochondria",
+    "genes": ["YKL141W", "YLL041C", "YOL126C", "YKL085W"]
+  },
+  "oxaloacetate": {
+    "name": "Oxaloacetate",
+    "compartment": "mitochondria",
+    "genes": ["YOL126C", "YKL085W", "YLR301W", "YPR002W", "YAL016W", "YGL062W"]
+  },
+  "6-phospho-d-gluconate": {
+    "name": "6-Phospho-D-gluconate",
+    "compartment": "cytosol",
+    "genes": ["YBR196C", "YHR104W", "YGR248W"]
+  },
+  "d-ribulose-5-phosphate": {
+    "name": "D-Ribulose 5-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YGR248W", "YLR354C", "YGB582W"]
+  },
+  "d-ribose-5-phosphate": {
+    "name": "D-Ribose 5-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YLR354C", "YBR109C", "YPR074C", "YGL246C"]
+  },
+  "d-xylulose-5-phosphate": {
+    "name": "D-Xylulose 5-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YGB582W", "YBR109C", "YPR074C", "YGR043C"]
+  },
+  "erythrose-4-phosphate": {
+    "name": "D-Erythrose 4-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YBR109C", "YPR074C", "YGR043C", "YDR007W"]
+  },
+  "sedoheptulose-7-phosphate": {
+    "name": "Sedoheptulose 7-phosphate",
+    "compartment": "cytosol",
+    "genes": ["YBR109C", "YPR074C", "YGR043C"]
+  },
+  "glycerol": {
+    "name": "Glycerol",
+    "compartment": "cytosol",
+    "genes": ["YDL022W", "YOL119C", "YDL238C", "YOL059W"]
+  },
+  "l-glutamate": {
+    "name": "L-Glutamate",
+    "compartment": "cytosol",
+    "genes": ["YDL178W", "YDR148C", "YDR111C", "YNL117W", "YPR047W"]
+  },
+  "l-glutamine": {
+    "name": "L-Glutamine",
+    "compartment": "cytosol",
+    "genes": ["YPR047W", "YAL012W", "YGL017W"]
+  },
+  "l-aspartate": {
+    "name": "L-Aspartate",
+    "compartment": "cytosol",
+    "genes": ["YAL016W", "YGL062W", "YLR348C", "YKL106W", "YBL024W"]
+  },
+  "l-alanine": {
+    "name": "L-Alanine",
+    "compartment": "cytosol",
+    "genes": ["YLR348C", "YDR111C", "YNL117W"]
+  },
+  "atp": {
+    "name": "ATP",
+    "compartment": "cytosol",
+    "genes": ["YBR196C", "YGR240C", "YMR105C", "YKL060C", "YGR204W", "YOR307C", "YDL022W", "YKL211C"]
+  },
+  "nadh": {
+    "name": "NADH",
+    "compartment": "cytosol",
+    "genes": ["YJR009C", "YOL126C", "YKL085W", "YAL060W", "YOL059W", "YMR303C", "YPL088W"]
+  },
+  "nadph": {
+    "name": "NADPH",
+    "compartment": "cytosol",
+    "genes": ["YBR196C", "YHR104W", "YGR248W", "YNL009W", "YDL178W"]
+  }
+}
