@@ -1392,21 +1392,41 @@ body {
     z-index: 10;
 }
 
-.gsh-gene-up {
-    background-color: rgba(239, 68, 68, 0.22);
-    border-color: rgba(239, 68, 68, 0.85);
-    box-shadow: 0 0 6px rgba(239, 68, 68, 0.3);
+.gsh-gene-up-pulse {
+    animation: gsh-pulse-up 2s infinite ease-in-out;
 }
 
-.gsh-gene-down {
-    background-color: rgba(99, 102, 241, 0.22);
-    border-color: rgba(99, 102, 241, 0.85);
-    box-shadow: 0 0 6px rgba(99, 102, 241, 0.3);
+.gsh-gene-down-pulse {
+    animation: gsh-pulse-down 2s infinite ease-in-out;
 }
 
 .gsh-gene-neutral {
     background-color: rgba(148, 163, 184, 0.12);
     border-color: rgba(148, 163, 184, 0.45);
+}
+
+@keyframes gsh-pulse-up {
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}
+
+@keyframes gsh-pulse-down {
+    0% {
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(99, 102, 241, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    }
 }
 
 /* Custom Tooltip styling */

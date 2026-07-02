@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initDropzone();
     initControls();
     initAdvancedAnalysisBindings();
+    initGSHZoomPan();
     
     // Add load mock button listener
     document.getElementById("load-mock-btn").addEventListener("click", loadMockData);
@@ -83,6 +84,7 @@ function switchTab(tabId) {
         renderMotifLogoPlaceholder();
     } else if (tabId === 'custom-pathway-tab') {
         loadGSHPathwayData();
+        resetGSHZoom();
     }
 }
 
@@ -4038,13 +4040,28 @@ function renderGSHPathwayOverlay(results) {
         box.style.width = `${item.w}%`;
         box.style.height = `${item.h}%`;
         
-        // Assign color classification based on representative Log2FC
+        // Assign color classification based on representative Log2FC with intensity-based opacity
         const log2fc = parseFloat(item.rep_log2fc);
+        const absFC = Math.abs(log2fc);
+        
         if (log2fc > 0.5) {
-            box.classList.add("gsh-gene-up");
+            // Up-regulation: Red (239, 68, 68)
+            const alpha = Math.min(0.85, 0.25 + ((absFC - 0.5) / 2.0) * 0.60);
+            box.style.backgroundColor = `rgba(239, 68, 68, ${alpha})`;
+            box.style.boxShadow = `0 0 8px rgba(239, 68, 68, ${alpha + 0.1})`;
+            box.style.borderColor = `rgba(239, 68, 68, ${Math.min(1.0, alpha + 0.2)})`;
+            box.classList.add("gsh-gene-up-pulse"); // Add pulsing effect
         } else if (log2fc < -0.5) {
-            box.classList.add("gsh-gene-down");
+            // Down-regulation: Indigo/Blue (99, 102, 241)
+            const alpha = Math.min(0.85, 0.25 + ((absFC - 0.5) / 2.0) * 0.60);
+            box.style.backgroundColor = `rgba(99, 102, 241, ${alpha})`;
+            box.style.boxShadow = `0 0 8px rgba(99, 102, 241, ${alpha + 0.1})`;
+            box.style.borderColor = `rgba(99, 102, 241, ${Math.min(1.0, alpha + 0.2)})`;
+            box.classList.add("gsh-gene-down-pulse"); // Add pulsing effect
         } else {
+            // Neutral: Grey
+            box.style.backgroundColor = `rgba(148, 163, 184, 0.15)`;
+            box.style.borderColor = `rgba(148, 163, 184, 0.3)`;
             box.classList.add("gsh-gene-neutral");
         }
         
@@ -4097,4 +4114,117 @@ function renderGSHPathwayOverlay(results) {
         
         overlayLayer.appendChild(box);
     });
+}
+
+// ----------------------------------------------------------------------
+// Custom Pathway Zoom & Pan Implementation
+// ----------------------------------------------------------------------
+let gshZoomScale = 1.0;
+let gshZoomPanX = 0;
+let gshZoomPanY = 0;
+let gshIsDragging = false;
+let gshStartX = 0;
+let gshStartY = 0;
+
+function initGSHZoomPan() {
+    const wrapper = document.querySelector(".gsh-pathway-wrapper");
+    const content = document.getElementById("gsh-pathway-content");
+    if (!wrapper || !content) return;
+    
+    // Zoom control buttons
+    const btnIn = document.getElementById("btn-zoom-in");
+    const btnOut = document.getElementById("btn-zoom-out");
+    const btnReset = document.getElementById("btn-zoom-reset");
+    
+    if (btnIn) btnIn.addEventListener("click", () => adjustZoom(0.25));
+    if (btnOut) btnOut.addEventListener("click", () => adjustZoom(-0.25));
+    if (btnReset) btnReset.addEventListener("click", () => resetGSHZoom());
+    
+    // Mouse Wheel Zoom
+    wrapper.addEventListener("wheel", (e) => {
+        // Only zoom if custom-pathway-tab is active and visible
+        if (document.getElementById("custom-pathway-tab").classList.contains("active")) {
+            e.preventDefault();
+            const zoomFactor = 0.08;
+            const direction = e.deltaY < 0 ? 1 : -1;
+            
+            const rect = wrapper.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            const contentX = (mouseX - gshZoomPanX) / gshZoomScale;
+            const contentY = (mouseY - gshZoomPanY) / gshZoomScale;
+            
+            const newScale = Math.max(0.6, Math.min(3.5, gshZoomScale + direction * zoomFactor));
+            
+            gshZoomPanX = mouseX - contentX * newScale;
+            gshZoomPanY = mouseY - contentY * newScale;
+            gshZoomScale = newScale;
+            
+            applyTransform();
+        }
+    }, { passive: false });
+    
+    // Mouse Drag Pan
+    wrapper.addEventListener("mousedown", (e) => {
+        if (e.target.classList.contains("gsh-gene-hotspot") || e.target.closest("button")) {
+            return;
+        }
+        if (e.button !== 0) return;
+        gshIsDragging = true;
+        wrapper.style.cursor = "grabbing";
+        gshStartX = e.clientX - gshZoomPanX;
+        gshStartY = e.clientY - gshZoomPanY;
+    });
+    
+    window.addEventListener("mousemove", (e) => {
+        if (!gshIsDragging) return;
+        gshZoomPanX = e.clientX - gshStartX;
+        gshZoomPanY = e.clientY - gshStartY;
+        applyTransform();
+    });
+    
+    window.addEventListener("mouseup", () => {
+        if (gshIsDragging) {
+            gshIsDragging = false;
+            wrapper.style.cursor = "grab";
+        }
+    });
+}
+
+function adjustZoom(amount) {
+    const wrapper = document.querySelector(".gsh-pathway-wrapper");
+    if (!wrapper) return;
+    
+    const rect = wrapper.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    
+    const contentX = (centerX - gshZoomPanX) / gshZoomScale;
+    const contentY = (centerY - gshZoomPanY) / gshZoomScale;
+    
+    const newScale = Math.max(0.6, Math.min(3.5, gshZoomScale + amount));
+    
+    gshZoomPanX = centerX - contentX * newScale;
+    gshZoomPanY = centerY - contentY * newScale;
+    gshZoomScale = newScale;
+    
+    applyTransform();
+}
+
+function resetGSHZoom() {
+    gshZoomScale = 1.0;
+    gshZoomPanX = 0;
+    gshZoomPanY = 0;
+    applyTransform();
+    
+    const wrapper = document.querySelector(".gsh-pathway-wrapper");
+    if (wrapper) wrapper.style.cursor = "grab";
+}
+
+function applyTransform() {
+    const content = document.getElementById("gsh-pathway-content");
+    if (content) {
+        content.style.transform = `translate(${gshZoomPanX}px, ${gshZoomPanY}px) scale(${gshZoomScale})`;
+    }
 }
