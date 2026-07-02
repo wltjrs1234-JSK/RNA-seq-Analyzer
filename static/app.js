@@ -4040,30 +4040,33 @@ function renderGSHPathwayOverlay(results) {
         box.style.width = `${item.w}%`;
         box.style.height = `${item.h}%`;
         
+        // Create the small colored square indicator (2nd option requested by user)
+        const indicator = document.createElement("div");
+        indicator.className = "gsh-gene-indicator";
+        
         // Assign color classification based on representative Log2FC with intensity-based opacity
         const log2fc = parseFloat(item.rep_log2fc);
         const absFC = Math.abs(log2fc);
         
         if (log2fc > 0.5) {
             // Up-regulation: Red (239, 68, 68)
-            const alpha = Math.min(0.85, 0.25 + ((absFC - 0.5) / 2.0) * 0.60);
-            box.style.backgroundColor = `rgba(239, 68, 68, ${alpha})`;
-            box.style.boxShadow = `0 0 8px rgba(239, 68, 68, ${alpha + 0.1})`;
-            box.style.borderColor = `rgba(239, 68, 68, ${Math.min(1.0, alpha + 0.2)})`;
-            box.classList.add("gsh-gene-up-pulse"); // Add pulsing effect
+            const alpha = Math.min(0.9, 0.35 + ((absFC - 0.5) / 2.0) * 0.55);
+            indicator.style.backgroundColor = `rgba(239, 68, 68, ${alpha})`;
+            indicator.style.borderColor = `rgba(239, 68, 68, ${Math.min(1.0, alpha + 0.15)})`;
+            indicator.classList.add("gsh-gene-up-pulse"); // Add pulsing effect
         } else if (log2fc < -0.5) {
             // Down-regulation: Indigo/Blue (99, 102, 241)
-            const alpha = Math.min(0.85, 0.25 + ((absFC - 0.5) / 2.0) * 0.60);
-            box.style.backgroundColor = `rgba(99, 102, 241, ${alpha})`;
-            box.style.boxShadow = `0 0 8px rgba(99, 102, 241, ${alpha + 0.1})`;
-            box.style.borderColor = `rgba(99, 102, 241, ${Math.min(1.0, alpha + 0.2)})`;
-            box.classList.add("gsh-gene-down-pulse"); // Add pulsing effect
+            const alpha = Math.min(0.9, 0.35 + ((absFC - 0.5) / 2.0) * 0.55);
+            indicator.style.backgroundColor = `rgba(99, 102, 241, ${alpha})`;
+            indicator.style.borderColor = `rgba(99, 102, 241, ${Math.min(1.0, alpha + 0.15)})`;
+            indicator.classList.add("gsh-gene-down-pulse"); // Add pulsing effect
         } else {
             // Neutral: Grey
-            box.style.backgroundColor = `rgba(148, 163, 184, 0.15)`;
-            box.style.borderColor = `rgba(148, 163, 184, 0.3)`;
-            box.classList.add("gsh-gene-neutral");
+            indicator.style.backgroundColor = `rgba(148, 163, 184, 0.2)`;
+            indicator.style.borderColor = `rgba(148, 163, 184, 0.4)`;
         }
+        
+        box.appendChild(indicator);
         
         // Label inner text or symbol if needed
         box.setAttribute("data-label", key);
