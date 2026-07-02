@@ -1,4 +1,8 @@
 @echo off
+if "%1"=="h" goto begin
+mshta vbscript:CreateObject("Wscript.Shell").Run("""%~f0"" h",0)(window.close)&&exit
+:begin
+
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
@@ -6,7 +10,6 @@ echo ============================================================
 echo   S. cerevisiae RNA-seq Analyzer Launcher (Port: 8500)
 echo ============================================================
 echo.
-echo * [INFO] 창 없이 백그라운드 실행을 원하시면 'run_invisible.vbs'를 실행하세요.
 echo * [INFO] 백그라운드 서버 종료를 원하시면 'stop.bat'을 실행하세요.
 echo ============================================================
 echo.
