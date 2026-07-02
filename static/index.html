@@ -992,7 +992,7 @@
                             </div>
 
                             <!-- Interactive Image Canvas Container -->
-                            <div class="gsh-pathway-wrapper" style="position: relative; width: 100%; max-width: 1000px; height: 600px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 8px; background: #ffffff; cursor: grab; user-select: none;">
+                            <div class="gsh-pathway-wrapper" style="position: relative; width: 100%; max-width: 1400px; height: 750px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 8px; background: #ffffff; cursor: grab; user-select: none;">
                                 <!-- Zoom / Pan Control Panel -->
                                 <div style="position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; gap: 6px;">
                                     <button class="btn btn-secondary btn-sm" id="btn-zoom-in" title="확대" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; background: rgba(255, 255, 255, 0.9); border: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #475569;">
@@ -1006,8 +1006,8 @@
                                     </button>
                                 </div>
 
-                                <!-- Inner content div that gets scaled and translated -->
-                                <div id="gsh-pathway-content" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; will-change: transform;">
+                                <!-- Inner content div that gets scaled and translated (Height auto-fits to image aspect ratio) -->
+                                <div id="gsh-pathway-content" style="position: absolute; top: 0; left: 0; width: 100%; transform-origin: 0 0; will-change: transform;">
                                     <img src="images/yeast_gsh_pathway.png" alt="Yeast GSH Pathway" style="display: block; width: 100%; height: auto; pointer-events: none;" id="gsh-pathway-bg">
                                     <!-- Overlay layer where dynamically generated boxes will be inserted -->
                                     <div id="gsh-overlay-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto;"></div>
@@ -1036,6 +1036,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- Application JavaScript -->
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
 </body>
 </html>
