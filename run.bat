@@ -1,8 +1,14 @@
 @echo off
 if "%1"=="h" goto begin
-mshta vbscript:CreateObject("Wscript.Shell").Run("""%~f0"" h",0)(window.close)&&exit
-:begin
 
+:: Create temporary VBScript to run this batch file silently
+echo Set WshShell = CreateObject("WScript.Shell") > "%temp%\run_silent.vbs"
+echo WshShell.Run "cmd.exe /c """"%~f0"" h", 0, False >> "%temp%\run_silent.vbs"
+wscript.exe "%temp%\run_silent.vbs"
+del "%temp%\run_silent.vbs"
+exit /b
+
+:begin
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
