@@ -1,5 +1,5 @@
 @echo off
-:: Last Updated: 2026-07-02 16:01 (Apply 2nd option - mini badge indicator right next to gene name with aspect-ratio sync)
+:: Last Updated: 2026-07-03 07:44 (Resolved blurry text by adding high-res HTML text layers and magnet-style Flexbox alignment)
 echo Set WshShell = CreateObject("WScript.Shell") > "%temp%\run_silent.vbs"
 echo WshShell.Run Chr(34) ^& "%~dp0run_server.bat" ^& Chr(34), 0, False >> "%temp%\run_silent.vbs"
 wscript.exe "%temp%\run_silent.vbs"

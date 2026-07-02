@@ -4032,13 +4032,21 @@ function renderGSHPathwayOverlay(results) {
     Object.keys(results).forEach(key => {
         const item = results[key];
         const box = document.createElement("div");
-        box.className = "gsh-gene-hotspot";
+        box.className = "gsh-gene-overlay-container";
         
-        // Define positioning based on % coordinates
+        // Define positioning based on % coordinates (starts at left-edge, vertically centered)
         box.style.left = `${item.x}%`;
         box.style.top = `${item.y}%`;
-        box.style.width = `${item.w}%`;
-        box.style.height = `${item.h}%`;
+        
+        // Create the crisp HTML Text element
+        const geneText = document.createElement("span");
+        geneText.className = "gsh-gene-text";
+        geneText.innerText = key;
+        
+        // Special styling for black text labels
+        if (key === "GEX1" || key === "OPT1") {
+            geneText.classList.add("gsh-gene-text-black");
+        }
         
         // Create the small colored square indicator (2nd option requested by user)
         const indicator = document.createElement("div");
@@ -4066,6 +4074,8 @@ function renderGSHPathwayOverlay(results) {
             indicator.style.borderColor = `rgba(148, 163, 184, 0.4)`;
         }
         
+        // Append text and then indicator (placing badge right next to the name)
+        box.appendChild(geneText);
         box.appendChild(indicator);
         
         // Label inner text or symbol if needed
@@ -4099,8 +4109,8 @@ function renderGSHPathwayOverlay(results) {
             tooltip.innerHTML = tooltipHtml;
             tooltip.style.display = "block";
             
-            // Adjust position
-            const rect = box.getBoundingClientRect();
+            // Adjust position anchoring to the indicator box for accuracy
+            const rect = indicator.getBoundingClientRect();
             tooltip.style.left = `${window.scrollX + rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`;
             tooltip.style.top = `${window.scrollY + rect.top - tooltip.offsetHeight - 8}px`;
         });
