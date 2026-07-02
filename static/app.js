@@ -81,12 +81,14 @@ function switchTab(tabId) {
         loadGSEATerms();
     } else if (tabId === 'motif-tab') {
         renderMotifLogoPlaceholder();
+    } else if (tabId === 'custom-pathway-tab') {
+        loadGSHPathwayData();
     }
 }
 
 // Enable tabs after successful upload
 function enableAnalysisTabs() {
-    const disabledIds = ["nav-deg", "nav-volcano", "nav-pca", "nav-heatmap", "nav-kegg", "nav-go", "nav-network", "nav-gsea", "nav-motif", "nav-advanced"];
+    const disabledIds = ["nav-deg", "nav-volcano", "nav-pca", "nav-heatmap", "nav-kegg", "nav-go", "nav-network", "nav-gsea", "nav-motif", "nav-advanced", "nav-custom-pathway"];
     disabledIds.forEach(id => {
         document.getElementById(id).classList.remove("disabled");
     });
@@ -1067,6 +1069,12 @@ function initControls() {
     }
     if (btnExportMotifPdf) {
         btnExportMotifPdf.addEventListener("click", () => exportPlotlyChart("motif-logo-chart", "pdf", "yeast_motif_logo"));
+    }
+    
+    // Custom GSH Pathway Refresh Binding
+    const btnRefreshGsh = document.getElementById("btn-refresh-gsh-pathway");
+    if (btnRefreshGsh) {
+        btnRefreshGsh.addEventListener("click", loadGSHPathwayData);
     }
 }
 
@@ -3969,5 +3977,124 @@ function displayReporterDetailTable(metData) {
             <td style="padding: 8px; text-align: right; color: #64748b;">${pVal}</td>
         `;
         body.appendChild(tr);
+    });
+}
+
+// ----------------------------------------------------------------------
+// Custom GSH Pathway Mapped Overlay Logic
+// ----------------------------------------------------------------------
+function loadGSHPathwayData() {
+    updateStatus("analyzing", "글루타치온 경로 데이터 매핑 중...");
+    
+    fetch(`${API_URL}/api/gsh_pathway_data`)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("GSH pathway data mapping failed.");
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            renderGSHPathwayOverlay(data.results);
+            updateStatus("ready", "분석 완료");
+        } else {
+            alert("경로 데이터 수집 오류: " + data.message);
+            updateStatus("ready", "분석 완료");
+        }
+    })
+    .catch(err => {
+        console.error("Failed to load custom pathway overlay:", err);
+        alert("글루타치온 대사 맵을 구성하지 못했습니다: " + err.message);
+        updateStatus("ready", "분석 완료");
+    });
+}
+
+function renderGSHPathwayOverlay(results) {
+    const overlayLayer = document.getElementById("gsh-overlay-layer");
+    if (!overlayLayer) return;
+    
+    // Clear previous boxes
+    overlayLayer.innerHTML = "";
+    
+    // Create/reuse a custom tooltip box
+    let tooltip = document.getElementById("gsh-custom-tooltip");
+    if (!tooltip) {
+        tooltip = document.createElement("div");
+        tooltip.id = "gsh-custom-tooltip";
+        tooltip.className = "gsh-pathway-tooltip";
+        tooltip.style.display = "none";
+        document.body.appendChild(tooltip);
+    }
+    
+    // Render hotspots
+    Object.keys(results).forEach(key => {
+        const item = results[key];
+        const box = document.createElement("div");
+        box.className = "gsh-gene-hotspot";
+        
+        // Define positioning based on % coordinates
+        box.style.left = `${item.x}%`;
+        box.style.top = `${item.y}%`;
+        box.style.width = `${item.w}%`;
+        box.style.height = `${item.h}%`;
+        
+        // Assign color classification based on representative Log2FC
+        const log2fc = parseFloat(item.rep_log2fc);
+        if (log2fc > 0.5) {
+            box.classList.add("gsh-gene-up");
+        } else if (log2fc < -0.5) {
+            box.classList.add("gsh-gene-down");
+        } else {
+            box.classList.add("gsh-gene-neutral");
+        }
+        
+        // Label inner text or symbol if needed
+        box.setAttribute("data-label", key);
+        
+        // Setup mouse listeners for rich tooltip popup
+        box.addEventListener("mouseenter", (e) => {
+            let tooltipHtml = `<strong>${key}</strong> (Isoforms: ${item.genes.length}개)<br/>`;
+            tooltipHtml += `<div style="margin-top: 5px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 4px;">`;
+            
+            item.genes.forEach(g => {
+                const fcText = parseFloat(g.log2fc).toFixed(3);
+                const pValText = parseFloat(g.p_value).toExponential(3);
+                let fcColor = '#94a3b8'; // neutral grey
+                if (g.log2fc > 0.5) {
+                    fcColor = '#f87171'; // soft red
+                } else if (g.log2fc < -0.5) {
+                    fcColor = '#818cf8'; // soft blue
+                }
+                
+                tooltipHtml += `<span style="font-weight:600; color:#e2e8f0;">${g.locus_tag}</span> (${g.gene_symbol || 'N/A'}): `;
+                tooltipHtml += `<span style="color:${fcColor}; font-weight:600;">${g.log2fc >= 0 ? '+' : ''}${fcText}</span> `;
+                tooltipHtml += `<span style="color:#a1a1aa; font-size:10px;">(p:${pValText})</span><br/>`;
+                
+                if (g.wt_mean !== undefined && g.mut_mean !== undefined) {
+                    tooltipHtml += `<span style="color:#a1a1aa; font-size:10px; padding-left: 8px;">WT: ${parseFloat(g.wt_mean).toFixed(1)} / Mut: ${parseFloat(g.mut_mean).toFixed(1)}</span><br/>`;
+                }
+            });
+            tooltipHtml += `</div>`;
+            
+            tooltip.innerHTML = tooltipHtml;
+            tooltip.style.display = "block";
+            
+            // Adjust position
+            const rect = box.getBoundingClientRect();
+            tooltip.style.left = `${window.scrollX + rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`;
+            tooltip.style.top = `${window.scrollY + rect.top - tooltip.offsetHeight - 8}px`;
+        });
+        
+        box.addEventListener("mouseleave", () => {
+            tooltip.style.display = "none";
+        });
+        
+        box.addEventListener("mousemove", (e) => {
+            const rect = box.getBoundingClientRect();
+            tooltip.style.left = `${window.scrollX + rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`;
+            tooltip.style.top = `${window.scrollY + rect.top - tooltip.offsetHeight - 8}px`;
+        });
+        
+        overlayLayer.appendChild(box);
     });
 }

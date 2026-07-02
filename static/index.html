@@ -77,6 +77,10 @@
                     <i class="fa-solid fa-flask-vial"></i>
                     <span class="menu-text">균주 분석 확장</span>
                 </a>
+                <a href="#" class="menu-item disabled" id="nav-custom-pathway" data-tab="custom-pathway-tab">
+                    <i class="fa-solid fa-route"></i>
+                    <span class="menu-text">사용자맞춤 pathway</span>
+                </a>
             </nav>
             <div class="sidebar-footer">
                 <p class="version">v1.0.0</p>
@@ -936,6 +940,69 @@
                     </div>
                 </section>
 
+                <!-- Custom Pathway Mapping Tab -->
+                <section class="tab-pane" id="custom-pathway-tab">
+                    <div class="content-header">
+                        <div class="header-title-area">
+                            <h2 class="content-title">사용자맞춤 pathway</h2>
+                            <p class="content-subtitle">직접 정의한 글루타치온 생산 및 연계 대사 경로의 RNA-seq 발현량 분포 진단</p>
+                        </div>
+                    </div>
+
+                    <!-- Guide Panel -->
+                    <div class="card glass-card info-card" style="margin-bottom: 24px;">
+                        <div style="margin-bottom: 8px; display: flex; gap: 8px;">
+                            <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-circle-question" style="color: #6366f1; margin-right: 4px;"></i>분석 용도:</span>
+                            <span>설계한 글루타치온 생산 경로 및 관련 중심 대사 경로 상에서 병목(Bottleneck) 유전자와 유의하게 발현이 변동한 조절 인자들의 공간적 분포를 이미지 맵 위에서 직관적으로 파악합니다.</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <span style="font-weight: 600; color: #0f172a; min-width: 80px;"><i class="fa-solid fa-chart-line" style="color: #10b981; margin-right: 4px;"></i>해석 방법:</span>
+                            <span>유전자명 위에 표시된 색상 뱃지는 <b>Log2 Fold Change (Log2FC)</b> 강도를 의미합니다. 붉은색(과발현), 푸른색(발현 억제)으로 표시되며, 마우스 오버 시 각 동위효소(Isoforms)의 개별 WT/Mutant 발현량 값과 P-value를 상세 툴팁으로 실시간 진단할 수 있습니다.</span>
+                        </div>
+                    </div>
+
+                    <!-- Layout: Left (Pathway Canvas), Right (Legend & Statistics) -->
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 24px;">
+                        <div class="card glass-card" style="padding: 24px; display: flex; flex-direction: column; align-items: center; overflow: hidden; position: relative;">
+                            
+                            <!-- Control & Legend Header -->
+                            <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <h4 style="font-size: 14px; font-weight: 600; color: #1e293b; margin: 0;"><i class="fa-solid fa-route icon-margin" style="color: #4f46e5;"></i>글루타치온 생합성 맵</h4>
+                                    <button class="btn btn-secondary btn-sm" id="btn-refresh-gsh-pathway" style="padding: 6px 12px; font-size: 12px; height: 28px; display: flex; align-items: center; gap: 4px;">
+                                        <i class="fa-solid fa-arrows-rotate"></i>맵 동기화
+                                    </button>
+                                </div>
+                                
+                                <!-- Heatmap color scale legend -->
+                                <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: #64748b;">
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="display: inline-block; width: 12px; height: 12px; background: rgba(239, 68, 68, 0.7); border-radius: 3px;"></span>
+                                        <span>과발현 (Log2FC > 0.5)</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="display: inline-block; width: 12px; height: 12px; background: rgba(99, 102, 241, 0.7); border-radius: 3px;"></span>
+                                        <span>발현 억제 (Log2FC < -0.5)</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="display: inline-block; width: 12px; height: 12px; background: rgba(148, 163, 184, 0.3); border-radius: 3px;"></span>
+                                        <span>유의차 없음</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Interactive Image Canvas Container -->
+                            <div class="gsh-pathway-wrapper" style="position: relative; width: 100%; max-width: 1000px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 8px; background: #ffffff;">
+                                <img src="images/yeast_gsh_pathway.png" alt="Yeast GSH Pathway" style="display: block; width: 100%; height: auto; pointer-events: none;" id="gsh-pathway-bg">
+                                
+                                <!-- Overlay layer where dynamically generated boxes will be inserted -->
+                                <div id="gsh-overlay-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto;"></div>
+                            </div>
+
+                        </div>
+                    </div>
+                </section>
+
             </div>
         </main>
     </div>
@@ -954,6 +1021,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- Application JavaScript -->
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=5"></script>
 </body>
 </html>

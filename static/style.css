@@ -1367,3 +1367,67 @@ body {
     background-color: #dcfce7;
     color: #15803d;
 }
+
+/* Custom Pathway Mapping Overlay Styles */
+.gsh-pathway-wrapper {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 8px -1px rgba(0, 0, 0, 0.03);
+    transition: all 0.3s ease;
+}
+
+.gsh-gene-hotspot {
+    position: absolute;
+    border-radius: 4px;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gsh-gene-hotspot:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+}
+
+.gsh-gene-up {
+    background-color: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.85);
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.3);
+}
+
+.gsh-gene-down {
+    background-color: rgba(99, 102, 241, 0.22);
+    border-color: rgba(99, 102, 241, 0.85);
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.3);
+}
+
+.gsh-gene-neutral {
+    background-color: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.45);
+}
+
+/* Custom Tooltip styling */
+.gsh-pathway-tooltip {
+    position: absolute;
+    background: rgba(15, 23, 42, 0.95);
+    color: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 11px;
+    pointer-events: none;
+    z-index: 9999;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
+    line-height: 1.5;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    width: max-content;
+    max-width: 250px;
+}
+
+.gsh-pathway-tooltip strong {
+    color: #ffffff;
+    font-size: 12px;
+}

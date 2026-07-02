@@ -1401,6 +1401,82 @@ def get_reporter_metabolites(payload: dict = None):
     
     return {"success": True, "results": reporter_results}
 
+@app.get("/api/gsh_pathway_data")
+def get_gsh_pathway_data():
+    """Retrieve expression data mapped onto the custom GSH pathway coordinates."""
+    coords_path = os.path.join("data", "gsh_pathway_coords.json")
+    if not os.path.exists(coords_path):
+        return {"success": False, "message": "GSH pathway coordinates file not found."}
+        
+    with open(coords_path, "r", encoding="utf-8") as f:
+        coords_db = json.load(f)
+        
+    # Load current uploaded expression data
+    expression_db = {}
+    if os.path.exists(PARSED_DATA_PATH):
+        with open(PARSED_DATA_PATH, "r", encoding="utf-8") as f:
+            for item in json.load(f):
+                tag = item["locus_tag"].upper()
+                expression_db[tag] = {
+                    "gene_symbol": item["gene_symbol"],
+                    "locus_tag": item["locus_tag"],
+                    "log2fc": item["log2fc"],
+                    "p_value": item.get("pvalue") if item.get("pvalue") is not None else item.get("fdr", 1.0),
+                    "wt_mean": item.get("wt_val", 0.0),
+                    "mut_mean": item.get("mutant_val", 0.0)
+                }
+                
+    mapped_data = {}
+    for key, data in coords_db.items():
+        genes = data["genes"]
+        gene_details = []
+        
+        # Calculate representative values (e.g. max absolute Log2FC among isoforms)
+        rep_log2fc = 0.0
+        rep_p_value = 1.0
+        rep_locus_tag = ""
+        max_abs_fc = -1.0
+        
+        for g_tag in genes:
+            g_tag_up = g_tag.upper()
+            if g_tag_up in expression_db:
+                expr = expression_db[g_tag_up]
+                gene_details.append(expr)
+                abs_fc = abs(expr["log2fc"])
+                if abs_fc > max_abs_fc:
+                    max_abs_fc = abs_fc
+                    rep_log2fc = expr["log2fc"]
+                    rep_p_value = expr["p_value"]
+                    rep_locus_tag = expr["locus_tag"]
+            else:
+                # If gene not found in uploaded dataset, return placeholder
+                gene_details.append({
+                    "gene_symbol": key.split("/")[0].split(",")[0].strip(),
+                    "locus_tag": g_tag,
+                    "log2fc": 0.0,
+                    "p_value": 1.0,
+                    "wt_mean": 0.0,
+                    "mut_mean": 0.0
+                })
+                
+        # If no isoforms were found in the dataset
+        if max_abs_fc == -1.0:
+            rep_locus_tag = genes[0] if genes else ""
+            
+        mapped_data[key] = {
+            "x": data["x"],
+            "y": data["y"],
+            "w": data["w"],
+            "h": data["h"],
+            "label": key,
+            "rep_log2fc": rep_log2fc,
+            "rep_p_value": rep_p_value,
+            "rep_locus_tag": rep_locus_tag,
+            "genes": gene_details
+        }
+        
+    return {"success": True, "results": mapped_data}
+
 @app.get("/api/pathways")
 def get_pathways():
     """Get list of yeast KEGG pathways."""
