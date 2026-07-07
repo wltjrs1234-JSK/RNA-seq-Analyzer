@@ -1,5 +1,5 @@
 @echo off
-:: Last Updated: 2026-07-07 14:40 (Verified and synced custom pathway backups and resolved all rendering and drag selection errors)
+:: Last Updated: 2026-07-07 14:55 (Verified and synced custom pathway backups and resolved all rendering and drag selection errors)
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
@@ -8,7 +8,11 @@ echo   S. cerevisiae RNA-seq Analyzer Launcher
 echo ============================================================
 echo.
 echo * [INFO] Cleaning up any previous server instances on port 8500...
-powershell -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 8500 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+:: Hybrid port cleanup (netstat + powershell fallback) to prevent port binding conflicts in restricted environment policies
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8500" ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+powershell -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 8500 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 
 echo * [INFO] Launching background FastAPI server...
 echo * [INFO] Checking for SGD cache downloads (this may take a few seconds)...
