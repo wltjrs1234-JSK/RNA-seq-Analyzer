@@ -4732,6 +4732,7 @@ function renderGSHPathwayOverlay(results) {
     // Convert to unified list of genes to render, resolving key collisions
     const genesToRender = [];
     const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+    const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
     
     // 1. Add Default Genes if not deleted
     Object.keys(results).forEach(symbol => {
