@@ -1,5 +1,5 @@
 @echo off
-:: Last Updated: 2026-07-07 13:33 (Fixed client rendering crash due to missing customGenes declaration, resolved default/custom gene overlay missing and drag-select failures)
+:: Last Updated: 2026-07-07 14:40 (Verified and synced custom pathway backups and resolved all rendering and drag selection errors)
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
@@ -47,7 +47,7 @@ if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
 
 :: Launch Google Chrome or fallback to default system browser (Using --new-window and --incognito to bypass persistent caches completely)
 if defined CHROME_PATH (
-    start "" "%CHROME_PATH%" --new-window --incognito "http://127.0.0.1:8500"
+    start "" "%CHROME_PATH%" --new-window "http://127.0.0.1:8500"
 ) else (
     start http://127.0.0.1:8500
 )

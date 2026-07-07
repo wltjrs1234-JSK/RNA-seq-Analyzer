@@ -1477,6 +1477,32 @@ def get_gsh_pathway_data():
         
     return {"success": True, "results": mapped_data}
 
+@app.get("/api/pathway_maps")
+def get_custom_pathway_maps():
+    """Retrieve server-side backup of custom pathway maps and coordinates."""
+    pathway_backup_path = os.path.join("data", "custom_pathways.json")
+    if not os.path.exists(pathway_backup_path):
+        return {"success": False, "message": "No custom pathways backup found on server."}
+    try:
+        with open(pathway_backup_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {"success": True, "store": data}
+    except Exception as e:
+        return {"success": False, "message": f"Failed to load custom pathways: {str(e)}"}
+
+@app.post("/api/pathway_maps")
+def save_custom_pathway_maps(payload: dict):
+    """Save client-side custom pathway maps and layout configurations onto the server as backup."""
+    pathway_backup_path = os.path.join("data", "custom_pathways.json")
+    try:
+        # Ensure 'data' directory exists
+        os.makedirs("data", exist_ok=True)
+        with open(pathway_backup_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return {"success": True, "message": "Custom pathways backup successfully saved on server."}
+    except Exception as e:
+        return {"success": False, "message": f"Failed to save custom pathways backup: {str(e)}"}
+
 @app.get("/api/pathways")
 def get_pathways():
     """Get list of yeast KEGG pathways."""

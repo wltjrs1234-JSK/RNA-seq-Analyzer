@@ -4005,47 +4005,90 @@ function clearSelection() {
 
 function saveAllPathwayMaps() {
     localStorage.setItem("pathway_maps_store", JSON.stringify(pathwayMapsStore));
+    
+    // Backup pathway maps to the server
+    fetch(`${API_URL}/api/pathway_maps`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(pathwayMapsStore)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            console.error("Server pathway backup failed:", data.message);
+        }
+    })
+    .catch(err => {
+        console.error("Error backing up pathways to server:", err);
+    });
 }
 
 function loadGSHPathwayData() {
     updateStatus("analyzing", "대사 경로 데이터 매핑 중...");
     
-    const savedStore = localStorage.getItem("pathway_maps_store");
-    if (savedStore) {
-        try {
-            pathwayMapsStore = JSON.parse(savedStore);
-        } catch (e) {
-            console.error("Failed to parse saved pathway maps store:", e);
+    // Fetch server backup to restore GSH & NMN maps
+    fetch(`${API_URL}/api/pathway_maps`)
+    .then(res => {
+        if (!res.ok) throw new Error("Server backup API error");
+        return res.json();
+    })
+    .then(serverData => {
+        if (serverData.success && serverData.store) {
+            pathwayMapsStore = serverData.store;
+            localStorage.setItem("pathway_maps_store", JSON.stringify(pathwayMapsStore));
+        } else {
+            loadFromLocalStorage();
+        }
+        proceedWithLoading();
+    })
+    .catch(err => {
+        console.warn("Failed to check server backup, using local fallback:", err);
+        loadFromLocalStorage();
+        proceedWithLoading();
+    });
+
+    function loadFromLocalStorage() {
+        const savedStore = localStorage.getItem("pathway_maps_store");
+        if (savedStore) {
+            try {
+                pathwayMapsStore = JSON.parse(savedStore);
+            } catch (e) {
+                console.error("Failed to parse saved pathway maps store:", e);
+                pathwayMapsStore = {};
+            }
+        } else {
             pathwayMapsStore = {};
         }
-    } else {
-        pathwayMapsStore = {};
     }
-    
-    // Ensure default map exists in store
-    if (!pathwayMapsStore["yeast_gsh_pathway"]) {
-        fetchDefaultLayout()
-        .then(defaultLayout => {
-            pathwayMapsStore["yeast_gsh_pathway"] = {
-                name: "Yeast GSH Pathway",
-                width: defaultLayout.width || 1024,
-                height: defaultLayout.height || 580,
-                nodes: defaultLayout.nodes || [],
-                arrows: defaultLayout.arrows || []
-            };
-            saveAllPathwayMaps();
-            initializeMapDropdown();
-            selectAndLoadMap(currentMapId);
-        })
-        .catch(err => {
-            console.error("Failed to load default layout:", err);
-            updateStatus("ready", "분석 완료");
-        });
-        return;
+
+    function proceedWithLoading() {
+        // Ensure default map exists in store
+        if (!pathwayMapsStore["yeast_gsh_pathway"]) {
+            fetchDefaultLayout()
+            .then(defaultLayout => {
+                pathwayMapsStore["yeast_gsh_pathway"] = {
+                    name: "Yeast GSH Pathway",
+                    width: defaultLayout.width || 1024,
+                    height: defaultLayout.height || 580,
+                    nodes: defaultLayout.nodes || [],
+                    arrows: defaultLayout.arrows || []
+                };
+                saveAllPathwayMaps();
+                initializeMapDropdown();
+                selectAndLoadMap(currentMapId);
+            })
+            .catch(err => {
+                console.error("Failed to load default layout:", err);
+                updateStatus("ready", "분석 완료");
+            });
+            return;
+        }
+        
+        initializeMapDropdown();
+        selectAndLoadMap(currentMapId);
     }
-    
-    initializeMapDropdown();
-    selectAndLoadMap(currentMapId);
 }
 
 function fetchDefaultLayout() {
