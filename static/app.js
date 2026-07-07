@@ -5062,7 +5062,6 @@ function renderGSHPathwayOverlay(results) {
     });
     
     // Filter out deleted default genes if any
-    const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
     deletedDefaults.forEach(delKey => {
         const foEl = overlayLayer.querySelector(`foreignObject[data-gene="${delKey}"]`);
         if (foEl) foEl.remove();
