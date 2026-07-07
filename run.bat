@@ -1,4 +1,5 @@
 @echo off
+:: Last Updated: 2026-07-07 10:35 (Added custom pathway alignment tools, node theme color pickers, duplicate gene badge rendering support, and Ctrl-drawing snaps)
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
