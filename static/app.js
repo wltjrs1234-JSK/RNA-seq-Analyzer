@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initControls();
     initAdvancedAnalysisBindings();
     initGSHZoomPan();
+    initGSHEditorBindings();
     
     // Add load mock button listener
     document.getElementById("load-mock-btn").addEventListener("click", loadMockData);
@@ -3982,43 +3983,737 @@ function displayReporterDetailTable(metData) {
     });
 }
 
+// Custom GSH Pathway Mapped Overlay & Interactive Editor Logic
 // ----------------------------------------------------------------------
-// Custom GSH Pathway Mapped Overlay Logic
-// ----------------------------------------------------------------------
+let pathwayMapsStore = {};
+let currentMapId = "yeast_gsh_pathway";
+let isGshEditMode = false;
+let activeGshTool = null; // 'add-node', 'add-arrow', 'add-gene', 'delete', null
+let selectedArrowSourceId = null;
+
+// Global selection sets for advanced editor UX
+let selectedNodes = new Set();
+let selectedArrows = new Set();
+let selectedGenes = new Set(); // Stores gene symbol names (keys)
+let clipboardBuffer = null; // Buffer containing deep copies of copied elements
+
+function clearSelection() {
+    selectedNodes.clear();
+    selectedArrows.clear();
+    selectedGenes.clear();
+}
+
+function saveAllPathwayMaps() {
+    localStorage.setItem("pathway_maps_store", JSON.stringify(pathwayMapsStore));
+}
+
 function loadGSHPathwayData() {
-    updateStatus("analyzing", "글루타치온 경로 데이터 매핑 중...");
+    updateStatus("analyzing", "대사 경로 데이터 매핑 중...");
     
+    const savedStore = localStorage.getItem("pathway_maps_store");
+    if (savedStore) {
+        try {
+            pathwayMapsStore = JSON.parse(savedStore);
+        } catch (e) {
+            console.error("Failed to parse saved pathway maps store:", e);
+            pathwayMapsStore = {};
+        }
+    } else {
+        pathwayMapsStore = {};
+    }
+    
+    // Ensure default map exists in store
+    if (!pathwayMapsStore["yeast_gsh_pathway"]) {
+        fetchDefaultLayout()
+        .then(defaultLayout => {
+            pathwayMapsStore["yeast_gsh_pathway"] = {
+                name: "Yeast GSH Pathway",
+                width: defaultLayout.width || 1024,
+                height: defaultLayout.height || 580,
+                nodes: defaultLayout.nodes || [],
+                arrows: defaultLayout.arrows || []
+            };
+            saveAllPathwayMaps();
+            initializeMapDropdown();
+            selectAndLoadMap(currentMapId);
+        })
+        .catch(err => {
+            console.error("Failed to load default layout:", err);
+            updateStatus("ready", "분석 완료");
+        });
+        return;
+    }
+    
+    initializeMapDropdown();
+    selectAndLoadMap(currentMapId);
+}
+
+function fetchDefaultLayout() {
+    return fetch(`/data/gsh_pathway_layout.json`)
+    .then(res => {
+        if (!res.ok) throw new Error("Default layout file not found.");
+        return res.json();
+    });
+}
+
+function initializeMapDropdown() {
+    const selectEl = document.getElementById("pathway-map-select");
+    if (!selectEl) return;
+    
+    selectEl.innerHTML = "";
+    Object.keys(pathwayMapsStore).forEach(mapId => {
+        const option = document.createElement("option");
+        option.value = mapId;
+        option.textContent = pathwayMapsStore[mapId].name;
+        if (mapId === currentMapId) {
+            option.selected = true;
+        }
+        selectEl.appendChild(option);
+    });
+}
+
+function selectAndLoadMap(mapId) {
+    if (!pathwayMapsStore[mapId]) {
+        mapId = "yeast_gsh_pathway";
+    }
+    currentMapId = mapId;
+    clearSelection();
+    
+    const currentMap = pathwayMapsStore[currentMapId];
+    
+    // Update Size input forms
+    const widthInput = document.getElementById("canvas-width-input");
+    const heightInput = document.getElementById("canvas-height-input");
+    if (widthInput) widthInput.value = currentMap.width || 1024;
+    if (heightInput) heightInput.value = currentMap.height || 580;
+    
+    // Resize SVG viewport dynamically
+    const svgEl = document.getElementById("gsh-pathway-svg");
+    if (svgEl) {
+        svgEl.setAttribute("viewBox", `0 0 ${currentMap.width || 1024} ${currentMap.height || 580}`);
+        const bgRect = svgEl.querySelector("rect");
+        if (bgRect) {
+            bgRect.setAttribute("width", currentMap.width || 1024);
+            bgRect.setAttribute("height", currentMap.height || 580);
+        }
+    }
+    
+    // Load gene expression mapping
     fetch(`${API_URL}/api/gsh_pathway_data`)
     .then(response => {
-        if (!response.ok) {
-            throw new Error("GSH pathway data mapping failed.");
-        }
+        if (!response.ok) throw new Error("GSH pathway data fetch failed.");
         return response.json();
     })
     .then(data => {
         if (data.success) {
-            renderGSHPathwayOverlay(data.results);
+            window.lastGSHResults = data.results;
+            renderGSHPathway();
             updateStatus("ready", "분석 완료");
         } else {
-            alert("경로 데이터 수집 오류: " + data.message);
+            window.lastGSHResults = {};
+            renderGSHPathway();
             updateStatus("ready", "분석 완료");
         }
     })
     .catch(err => {
-        console.error("Failed to load custom pathway overlay:", err);
-        alert("글루타치온 대사 맵을 구성하지 못했습니다: " + err.message);
+        console.error("Failed to load map data:", err);
+        window.lastGSHResults = {};
+        renderGSHPathway();
         updateStatus("ready", "분석 완료");
     });
 }
 
+// Global reference mapping for fast lookup
+function getNodesMap() {
+    const map = {};
+    const currentMap = pathwayMapsStore[currentMapId];
+    if (currentMap && currentMap.nodes) {
+        currentMap.nodes.forEach(n => {
+            map[n.id] = n;
+        });
+    }
+    return map;
+}
+
+// Calculate the optimized intersection path for arrows between nodes (Supports curves, straight lines, and free anchors)
+function calculateArrowPath(arrow, nodesMap) {
+    const fromNode = arrow.from ? nodesMap[arrow.from] : null;
+    const toNode = arrow.to ? nodesMap[arrow.to] : null;
+    
+    // Core points
+    let p1 = fromNode ? { x: fromNode.x + fromNode.w / 2, y: fromNode.y + fromNode.h / 2 } : (arrow.fromCoords || { x: 100, y: 100 });
+    let p2 = toNode ? { x: toNode.x + toNode.w / 2, y: toNode.y + toNode.h / 2 } : (arrow.toCoords || { x: 200, y: 200 });
+    
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist === 0) return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    
+    const ux = dx / dist;
+    const uy = dy / dist;
+    
+    // Normal vector for parallel offsets (transverse shift)
+    const nx = -uy;
+    const ny = ux;
+    
+    const pOffset = arrow.parallelOffset || 0;
+    
+    // Shift core points parallel to the path line to avoid layout overlapping
+    p1 = { x: p1.x + nx * pOffset, y: p1.y + ny * pOffset };
+    p2 = { x: p2.x + nx * pOffset, y: p2.y + ny * pOffset };
+    
+    // Auto-calculate border offset boundary with clear margins to avoid overlapping arrowheads
+    let startMargin = 2;
+    let endMargin = 12;
+    
+    if (arrow.direction === 'both') {
+        startMargin = 13;
+        endMargin = 13;
+    }
+    
+    let startX = fromNode ? p1.x + ux * (fromNode.w / 2 + startMargin) : p1.x + ux * startMargin;
+    let startY = fromNode ? p1.y + uy * (fromNode.h / 2 + startMargin) : p1.y + uy * startMargin;
+    
+    const endX = toNode ? p2.x - ux * (toNode.w / 2 + endMargin) : p2.x - ux * endMargin;
+    const endY = toNode ? p2.y - uy * (toNode.h / 2 + endMargin) : p2.y - uy * endMargin;
+    
+    // If straight line
+    if (arrow.type !== 'curved') {
+        return `M ${startX.toFixed(1)} ${startY.toFixed(1)} L ${endX.toFixed(1)} ${endY.toFixed(1)}`;
+    }
+    
+    // If curved (quadratic bezier Q path)
+    const mx = (startX + endX) / 2;
+    const my = (startY + endY) / 2;
+    const curvx = -uy;
+    const curvy = ux;
+    const curvature = arrow.curvature || 35;
+    
+    const cx = mx + curvx * curvature;
+    const cy = my + curvy * curvature;
+    
+    return `M ${startX.toFixed(1)} ${startY.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${endX.toFixed(1)} ${endY.toFixed(1)}`;
+}
+
+// Comprehensive rendering function for both background template (nodes/arrows) and DEG overlay
+function renderGSHPathway() {
+    const nodesLayer = document.getElementById("gsh-pathway-nodes");
+    const arrowsLayer = document.getElementById("gsh-pathway-arrows");
+    const overlayLayer = document.getElementById("gsh-dynamic-overlay");
+    const wrapper = document.querySelector(".gsh-pathway-wrapper");
+    
+    if (!nodesLayer || !arrowsLayer || !overlayLayer) return;
+    
+    // Clear previous
+    nodesLayer.innerHTML = "";
+    arrowsLayer.innerHTML = "";
+    overlayLayer.innerHTML = "";
+    
+    // Toggle edit-mode body class
+    if (isGshEditMode) {
+        wrapper.classList.add("edit-mode-active");
+    } else {
+        wrapper.classList.remove("edit-mode-active");
+    }
+    
+    const currentMap = pathwayMapsStore[currentMapId];
+    if (!currentMap) return;
+    
+    const nodesMap = getNodesMap();
+    
+    // 1. Draw Arrows (Reaction connections)
+    if (currentMap.arrows) {
+        // Group arrows by their node endpoints (sorted to detect bidirectional and multi-links)
+        const arrowGroups = {};
+        currentMap.arrows.forEach(arrow => {
+            if (arrow.from && arrow.to) {
+                const key = [arrow.from, arrow.to].sort().join("___");
+                if (!arrowGroups[key]) arrowGroups[key] = [];
+                arrowGroups[key].push(arrow);
+            }
+        });
+
+        currentMap.arrows.forEach(arrow => {
+            // Auto-curve or Auto-shift overlapping arrows between same nodes
+            let originalType = arrow.type;
+            let originalCurvature = arrow.curvature;
+            let originalParallelOffset = arrow.parallelOffset;
+            
+            if (arrow.from && arrow.to) {
+                const key = [arrow.from, arrow.to].sort().join("___");
+                const group = arrowGroups[key];
+                if (group && group.length > 1) {
+                    const index = group.indexOf(arrow);
+                    const sortedNodes = [arrow.from, arrow.to].sort();
+                    const isForward = arrow.from === sortedNodes[0];
+                    
+                    if (arrow.type === 'curved') {
+                        // 곡선인 경우 엇갈리게 휨 (Auto-curve)
+                        if (group.length === 2) {
+                            arrow.curvature = isForward ? 24 : -24;
+                        } else {
+                            const step = 22;
+                            const offset = (index - (group.length - 1) / 2) * step;
+                            arrow.curvature = offset === 0 ? 12 : offset;
+                        }
+                    } else {
+                        // 직선인 경우 나란하게 평행 시프트 (Auto-shift)
+                        if (group.length === 2) {
+                            arrow.parallelOffset = isForward ? 7 : -7;
+                        } else {
+                            const step = 10;
+                            const offset = (index - (group.length - 1) / 2) * step;
+                            arrow.parallelOffset = offset === 0 ? 5 : offset;
+                        }
+                    }
+                }
+            }
+            
+            const pathStr = calculateArrowPath(arrow, nodesMap);
+            
+            // Restore original object properties clean
+            arrow.type = originalType;
+            arrow.curvature = originalCurvature;
+            arrow.parallelOffset = originalParallelOffset;
+            
+            if (!pathStr) return;
+            
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            
+            // Apply selected class visually
+            let arrowClass = "gsh-pathway-arrow-group";
+            if (selectedArrows.has(arrow.id)) {
+                arrowClass += " element-selected";
+            }
+            g.setAttribute("class", arrowClass);
+            g.setAttribute("data-id", arrow.id);
+            
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", pathStr);
+            
+            // Set markers based on arrow direction
+            if (arrow.direction === 'both') {
+                path.setAttribute("marker-start", "url(#arrowhead-start)");
+                path.setAttribute("marker-end", "url(#arrowhead)");
+            } else {
+                path.setAttribute("marker-end", "url(#arrowhead)");
+            }
+            
+            path.setAttribute("stroke", "#64748b");
+            path.setAttribute("stroke-width", "1.5");
+            path.setAttribute("fill", "none");
+            
+            g.appendChild(path);
+            
+            // Edit mode listener for arrow
+            if (isGshEditMode) {
+                path.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    
+                    if (activeGshTool === 'delete') {
+                        if (confirm("이 반응 화살표를 삭제하시겠습니까?")) {
+                            currentMap.arrows = currentMap.arrows.filter(a => a.id !== arrow.id);
+                            selectedArrows.delete(arrow.id);
+                            saveAllPathwayMaps();
+                            renderGSHPathway();
+                        }
+                    } else if (!activeGshTool) {
+                        // Toggle Selection
+                        if (e.ctrlKey || e.shiftKey) {
+                            if (selectedArrows.has(arrow.id)) selectedArrows.delete(arrow.id);
+                            else selectedArrows.add(arrow.id);
+                        } else {
+                            clearSelection();
+                            selectedArrows.add(arrow.id);
+                        }
+                        renderGSHPathway();
+                    }
+                });
+            }
+            
+            // If arrow is selected and edit mode is active, render start & end anchor drag handles
+            if (isGshEditMode && selectedArrows.has(arrow.id)) {
+                const fromNode = arrow.from ? nodesMap[arrow.from] : null;
+                const toNode = arrow.to ? nodesMap[arrow.to] : null;
+                const pStart = arrow.fromCoords || (fromNode ? { x: fromNode.x + fromNode.w / 2, y: fromNode.y + fromNode.h / 2 } : { x: 100, y: 100 });
+                const pEnd = arrow.toCoords || (toNode ? { x: toNode.x + toNode.w / 2, y: toNode.y + toNode.h / 2 } : { x: 200, y: 200 });
+                
+                const createAnchor = (pt, type) => {
+                    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    circle.setAttribute("cx", pt.x);
+                    circle.setAttribute("cy", pt.y);
+                    circle.setAttribute("r", "6");
+                    circle.setAttribute("fill", type === 'start' ? "#3b82f6" : "#10b981");
+                    circle.setAttribute("stroke", "#ffffff");
+                    circle.setAttribute("stroke-width", "2");
+                    circle.setAttribute("style", "cursor: pointer; pointer-events: auto;");
+                    
+                    circle.addEventListener("mousedown", (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (e.button !== 0) return;
+                        
+                        let isDraggingAnchor = true;
+                        const startMouseX = e.clientX;
+                        const startMouseY = e.clientY;
+                        const startPtX = pt.x;
+                        const startPtY = pt.y;
+                        
+                        const handleAnchorMove = (mvEvent) => {
+                            if (!isDraggingAnchor) return;
+                            const dx = mvEvent.clientX - startMouseX;
+                            const dy = mvEvent.clientY - startMouseY;
+                            
+                            // Correct dx/dy relative to zoom scale
+                            const correctedDx = dx / gshZoomScale;
+                            const correctedDy = dy / gshZoomScale;
+                            
+                            const newX = Math.round(startPtX + correctedDx);
+                            const newY = Math.round(startPtY + correctedDy);
+                            
+                            // Transform to absolute coordinate free arrow
+                            arrow.from = null;
+                            arrow.to = null;
+                            
+                            if (!arrow.fromCoords) arrow.fromCoords = { x: pStart.x, y: pStart.y };
+                            if (!arrow.toCoords) arrow.toCoords = { x: pEnd.x, y: pEnd.y };
+                            
+                            if (type === 'start') {
+                                arrow.fromCoords.x = newX;
+                                arrow.fromCoords.y = newY;
+                            } else {
+                                arrow.toCoords.x = newX;
+                                arrow.toCoords.y = newY;
+                            }
+                            
+                            renderGSHPathway();
+                        };
+                        
+                        const handleAnchorUp = () => {
+                            isDraggingAnchor = false;
+                            document.removeEventListener("mousemove", handleAnchorMove);
+                            document.removeEventListener("mouseup", handleAnchorUp);
+                            saveAllPathwayMaps();
+                        };
+                        
+                        document.addEventListener("mousemove", handleAnchorMove);
+                        document.addEventListener("mouseup", handleAnchorUp);
+                    });
+                    
+                    g.appendChild(circle);
+                };
+                
+                createAnchor(pStart, 'start');
+                createAnchor(pEnd, 'end');
+            }
+            
+            arrowsLayer.appendChild(g);
+        });
+    }
+    
+    // 2. Draw Metabolite Nodes
+    if (currentMap.nodes) {
+        currentMap.nodes.forEach(node => {
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            
+            // Selection highlights
+            let nodeClass = "gsh-pathway-node-group";
+            if (selectedNodes.has(node.id)) {
+                nodeClass += " element-selected";
+            }
+            if (activeGshTool === 'add-arrow' && selectedArrowSourceId === node.id) {
+                nodeClass += " node-connection-selected";
+            }
+            g.setAttribute("class", nodeClass);
+            g.setAttribute("data-id", node.id);
+            
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("x", node.x);
+            rect.setAttribute("y", node.y);
+            rect.setAttribute("width", node.w);
+            rect.setAttribute("height", node.h);
+            rect.setAttribute("rx", node.rx || 12);
+            rect.setAttribute("stroke-width", "1");
+            rect.setAttribute("filter", "url(#shadow)");
+            
+            // Custom node color override or default types styling
+            if (node.fillColor) {
+                rect.setAttribute("fill", node.fillColor);
+                rect.setAttribute("stroke", node.strokeColor || "#64748b");
+                rect.setAttribute("stroke-width", "1.5");
+            } else if (node.type === 'accent') {
+                rect.setAttribute("fill", "#f1f5f9");
+                rect.setAttribute("stroke", "#94a3b8");
+                rect.setAttribute("stroke-width", "1.5");
+            } else if (node.type === 'gsh') {
+                rect.setAttribute("fill", "#ecfdf5");
+                rect.setAttribute("stroke", "#10b981");
+                rect.setAttribute("stroke-width", "1.5");
+            } else if (node.type === 'gssg') {
+                rect.setAttribute("fill", "#f0fdfa");
+                rect.setAttribute("stroke", "#14b8a6");
+                rect.setAttribute("stroke-width", "1.5");
+            } else {
+                rect.setAttribute("fill", "#ffffff");
+                rect.setAttribute("stroke", "#cbd5e1");
+                rect.setAttribute("stroke-width", "1");
+            }
+            
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", node.x + node.w / 2);
+            text.setAttribute("y", node.y + node.h / 2 + 4);
+            text.setAttribute("font-size", node.id === 'aspartate_semiald' ? '10' : '11');
+            text.textContent = node.label;
+            
+            if (node.textColor) {
+                text.setAttribute("fill", node.textColor);
+            } else if (node.type === 'gsh') {
+                text.setAttribute("fill", "#065f46");
+            } else if (node.type === 'gssg') {
+                text.setAttribute("fill", "#0f766e");
+            } else {
+                text.setAttribute("fill", "#334155");
+            }
+            
+            g.appendChild(rect);
+            g.appendChild(text);
+            
+            // Edit Mode: Node Drag & Drop
+            if (isGshEditMode) {
+                let isDraggingNode = false;
+                let startMux = 0;
+                let startMuy = 0;
+                
+                g.addEventListener("mousedown", (e) => {
+                    if (activeGshTool === 'add-arrow') return; // Let background canvas handle drag drawing!
+                    
+                    e.stopPropagation();
+                    if (e.button !== 0) return; // Left click only
+                    
+                    // Click events mapping for tools
+                    if (activeGshTool === 'delete') {
+                        if (confirm(`대사산물 '${node.label}'만 삭제하시겠습니까? (연결된 화살표는 원래 자리에 보존됩니다)`)) {
+                            // Backup coordinate pointers for any connected arrows before deleting this node
+                            currentMap.arrows.forEach(arrow => {
+                                if (arrow.from === node.id) {
+                                    const pathStr = calculateArrowPath(arrow, nodesMap);
+                                    const match = pathStr.match(/M\s+([\d.-]+)\s+([\d.-]+)/);
+                                    if (match) {
+                                        arrow.fromCoords = { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+                                    }
+                                    arrow.from = null;
+                                }
+                                if (arrow.to === node.id) {
+                                    const pathStr = calculateArrowPath(arrow, nodesMap);
+                                    // Calculate target center coords fallback
+                                    arrow.toCoords = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
+                                    arrow.to = null;
+                                }
+                            });
+                            
+                            currentMap.nodes = currentMap.nodes.filter(n => n.id !== node.id);
+                            selectedNodes.delete(node.id);
+                            saveAllPathwayMaps();
+                            renderGSHPathway();
+                        }
+                        return;
+                    }
+                    
+                    if (activeGshTool === 'add-arrow') {
+                        if (!selectedArrowSourceId) {
+                            selectedArrowSourceId = node.id;
+                            renderGSHPathway();
+                        } else if (selectedArrowSourceId === node.id) {
+                            selectedArrowSourceId = null; // deselect
+                            renderGSHPathway();
+                        } else {
+                            // Link Arrow from source to target
+                            const selectedType = document.querySelector('input[name="arrow-type"]:checked')?.value || 'straight';
+                            const selectedDir = document.querySelector('input[name="arrow-dir"]:checked')?.value || 'forward';
+                            
+                            const newArrow = {
+                                id: `arr_${selectedArrowSourceId}_${node.id}_${Date.now()}`,
+                                from: selectedArrowSourceId,
+                                to: node.id,
+                                type: selectedType,
+                                direction: selectedDir
+                            };
+                            currentMap.arrows.push(newArrow);
+                            selectedArrowSourceId = null;
+                            saveAllPathwayMaps();
+                            renderGSHPathway();
+                        }
+                        return;
+                    }
+                    
+                    // Selection handling
+                    if (!activeGshTool) {
+                        if (e.ctrlKey || e.shiftKey) {
+                            if (selectedNodes.has(node.id)) selectedNodes.delete(node.id);
+                            else selectedNodes.add(node.id);
+                        } else {
+                            if (!selectedNodes.has(node.id)) {
+                                clearSelection();
+                                selectedNodes.add(node.id);
+                            }
+                        }
+                        renderGSHPathway();
+                    }
+                    
+                    // Default: Drag Node (Supports bulk dragging)
+                    isDraggingNode = true;
+                    startMux = e.clientX;
+                    startMuy = e.clientY;
+                    
+                    // Capture start coordinates of all selected nodes for delta movement
+                    const startCoords = {};
+                    startCoords[node.id] = { x: node.x, y: node.y }; // Ensure current dragged node is always captured
+                    selectedNodes.forEach(nid => {
+                        const n = nodesMap[nid];
+                        if (n) startCoords[nid] = { x: n.x, y: n.y };
+                    });
+                    
+                    // Capture start offsets of all selected genes
+                    const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                    const startOffsets = {};
+                    selectedGenes.forEach(geneKey => {
+                        startOffsets[geneKey] = JSON.parse(JSON.stringify(savedOffsets[geneKey] || { dx: 0, dy: 0 }));
+                    });
+                    
+                    // Capture start coordinates of all selected arrows for delta movement
+                    const startArrowCoords = {};
+                    selectedArrows.forEach(aid => {
+                        const arrow = currentMap.arrows.find(a => a.id === aid);
+                        if (arrow) {
+                            startArrowCoords[aid] = {
+                                fromCoords: arrow.fromCoords ? { x: arrow.fromCoords.x, y: arrow.fromCoords.y } : null,
+                                toCoords: arrow.toCoords ? { x: arrow.toCoords.x, y: arrow.toCoords.y } : null
+                            };
+                        }
+                    });
+                    
+                    const handleMouseMove = (mvEvent) => {
+                        if (!isDraggingNode) return;
+                        
+                        const deltaMux = mvEvent.clientX - startMux;
+                        const deltaMuy = mvEvent.clientY - startMuy;
+                        
+                        const correctedDx = deltaMux / gshZoomScale;
+                        const correctedDy = deltaMuy / gshZoomScale;
+                        
+                        // Bulk Move: if dragged node is part of selected nodes, move all. Otherwise move single.
+                        if (selectedNodes.has(node.id)) {
+                            selectedNodes.forEach(nid => {
+                                const n = nodesMap[nid];
+                                const sCoord = startCoords[nid];
+                                if (n && sCoord) {
+                                    n.x = sCoord.x + correctedDx;
+                                    n.y = sCoord.y + correctedDy;
+                                }
+                            });
+                            
+                            // Also bulk move selected genes
+                            selectedGenes.forEach(geneKey => {
+                                const sOffset = startOffsets[geneKey];
+                                if (sOffset) {
+                                    savedOffsets[geneKey] = {
+                                        dx: sOffset.dx + correctedDx,
+                                        dy: sOffset.dy + correctedDy
+                                    };
+                                }
+                            });
+                            localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+                            
+                            // Also bulk move selected arrows
+                            selectedArrows.forEach(aid => {
+                                const arrow = currentMap.arrows.find(a => a.id === aid);
+                                const sArrowCoord = startArrowCoords[aid];
+                                if (arrow && sArrowCoord) {
+                                    if (arrow.fromCoords && sArrowCoord.fromCoords) {
+                                        arrow.fromCoords.x = sArrowCoord.fromCoords.x + correctedDx;
+                                        arrow.fromCoords.y = sArrowCoord.fromCoords.y + correctedDy;
+                                    }
+                                    if (arrow.toCoords && sArrowCoord.toCoords) {
+                                        arrow.toCoords.x = sArrowCoord.toCoords.x + correctedDx;
+                                        arrow.toCoords.y = sArrowCoord.toCoords.y + correctedDy;
+                                    }
+                                }
+                            });
+                        } else {
+                            const sCoord = startCoords[node.id];
+                            if (sCoord) {
+                                node.x = sCoord.x + correctedDx;
+                                node.y = sCoord.y + correctedDy;
+                            }
+                        }
+                        
+                        // Redraw pathway dynamically to update arrow paths and overlays cleanly
+                        renderGSHPathway();
+                    };
+                    
+                    const handleMouseUp = () => {
+                        if (isDraggingNode) {
+                            isDraggingNode = false;
+                            saveAllPathwayMaps();
+                            document.removeEventListener("mousemove", handleMouseMove);
+                            document.removeEventListener("mouseup", handleMouseUp);
+                            renderGSHPathway();
+                        }
+                    };
+                    
+                    document.addEventListener("mousemove", handleMouseMove);
+                    document.addEventListener("mouseup", handleMouseUp);
+                });
+                
+                // Double click to rename node name
+                g.addEventListener("dblclick", (e) => {
+                    e.stopPropagation();
+                    const newLabel = prompt("대사산물 이름을 수정하세요:", node.label);
+                    if (newLabel !== null && newLabel.trim() !== "") {
+                        node.label = newLabel.trim();
+                        saveAllPathwayMaps();
+                        renderGSHPathway();
+                    }
+                });
+            }
+            
+            nodesLayer.appendChild(g);
+        });
+    }
+    
+    // 3. Draw DEG Gene Overlays (Original overlay layer)
+    renderGSHPathwayOverlay(window.lastGSHResults || {});
+}
+
+// Gene Deletion Helper
+function deleteGeneElement(key) {
+    let custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+    const originLen = custom.length;
+    custom = custom.filter(cg => cg.symbol !== key);
+    localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+    
+    const offsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+    delete offsets[key];
+    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(offsets));
+    
+    if (originLen === custom.length) {
+        const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+        deletedDefaults.push(key);
+        localStorage.setItem(`gsh_deleted_default_genes_${currentMapId}`, JSON.stringify(deletedDefaults));
+    }
+    
+    selectedGenes.delete(key);
+    loadGSHPathwayData();
+}
+
 function renderGSHPathwayOverlay(results) {
-    const overlayLayer = document.getElementById("gsh-overlay-layer");
+    const overlayLayer = document.getElementById("gsh-dynamic-overlay");
     if (!overlayLayer) return;
     
     // Clear previous boxes
     overlayLayer.innerHTML = "";
     
-    // Create/reuse a custom tooltip box
     let tooltip = document.getElementById("gsh-custom-tooltip");
     if (!tooltip) {
         tooltip = document.createElement("div");
@@ -4028,88 +4723,332 @@ function renderGSHPathwayOverlay(results) {
         document.body.appendChild(tooltip);
     }
     
-    // Render hotspots
-    Object.keys(results).forEach(key => {
-        const item = results[key];
+    const currentMap = pathwayMapsStore[currentMapId];
+    if (!currentMap) return;
+    
+    const mapWidth = currentMap.width || 1024;
+    const mapHeight = currentMap.height || 580;
+    
+    // Convert to unified list of genes to render, resolving key collisions
+    const genesToRender = [];
+    const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+    
+    // 1. Add Default Genes if not deleted
+    Object.keys(results).forEach(symbol => {
+        if (!deletedDefaults.includes(symbol)) {
+            const item = results[symbol];
+            genesToRender.push({
+                id: symbol, // defaults can use symbol as ID
+                symbol: symbol,
+                x: item.x,
+                y: item.y,
+                rep_log2fc: item.rep_log2fc || 0.0,
+                genes: item.genes || [],
+                isCustom: false
+            });
+        }
+    });
+    
+    // 2. Add Custom Genes (Supports duplicates & key tracking)
+    customGenes.forEach(cg => {
+        const uniqueId = cg.id || `gene_legacy_${cg.symbol}_${Math.random()}`; // Handle old local storage models gracefully
+        genesToRender.push({
+            id: uniqueId,
+            symbol: cg.symbol,
+            x: cg.x,
+            y: cg.y,
+            rep_log2fc: cg.rep_log2fc || 0.0,
+            genes: cg.genes || [],
+            isCustom: true
+        });
+    });
+    
+    genesToRender.forEach(item => {
+        const key = item.id; // unique id to track movements & selections
+        const symbol = item.symbol;
+        
+        // Convert coords based on dynamic map dimensions
+        const baseX = (item.x * mapWidth) / 100;
+        const baseY = (item.y * mapHeight) / 100;
+        
+        const offset = savedOffsets[key] || { dx: 0, dy: 0 };
+        const finalX = baseX + offset.dx;
+        const finalY = baseY + offset.dy;
+        
+        const fo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+        fo.setAttribute("x", (finalX - 60).toFixed(1));
+        fo.setAttribute("y", (finalY - 14).toFixed(1));
+        fo.setAttribute("width", "150");
+        fo.setAttribute("height", "32");
+        fo.setAttribute("style", "overflow: visible; pointer-events: none;");
+        fo.setAttribute("data-gene", key);
+        
         const box = document.createElement("div");
-        box.className = "gsh-gene-overlay-container";
         
-        // Define positioning based on % coordinates (starts at left-edge, vertically centered)
-        box.style.left = `${item.x}%`;
-        box.style.top = `${item.y}%`;
+        // Selected highlight style
+        let boxClass = "gsh-gene-overlay-container";
+        if (selectedGenes.has(key)) {
+            boxClass += " element-selected";
+        }
+        box.className = boxClass;
+        box.style.display = "inline-flex";
+        box.style.alignItems = "center";
+        box.style.gap = "4px";
+        box.style.whiteSpace = "nowrap";
+        box.style.cursor = isGshEditMode ? "move" : "grab";
+        box.style.userSelect = "none";
+        box.style.pointerEvents = "auto";
         
-        // Create the crisp HTML Text element
         const geneText = document.createElement("span");
         geneText.className = "gsh-gene-text";
-        geneText.innerText = key;
+        geneText.innerText = symbol;
         
-        // Special styling for black text labels
-        if (key === "GEX1" || key === "OPT1") {
+        if (symbol === "GEX1" || symbol === "OPT1") {
             geneText.classList.add("gsh-gene-text-black");
         }
         
-        // Create the small colored square indicator (2nd option requested by user)
         const indicator = document.createElement("div");
         indicator.className = "gsh-gene-indicator";
         
-        // Assign color classification based on representative Log2FC with intensity-based opacity
         const log2fc = parseFloat(item.rep_log2fc);
         const absFC = Math.abs(log2fc);
         
         if (log2fc > 0.5) {
-            // Up-regulation: Red (239, 68, 68)
             const alpha = Math.min(0.9, 0.35 + ((absFC - 0.5) / 2.0) * 0.55);
             indicator.style.backgroundColor = `rgba(239, 68, 68, ${alpha})`;
             indicator.style.borderColor = `rgba(239, 68, 68, ${Math.min(1.0, alpha + 0.15)})`;
-            indicator.classList.add("gsh-gene-up-pulse"); // Add pulsing effect
+            indicator.classList.add("gsh-gene-up-pulse");
         } else if (log2fc < -0.5) {
-            // Down-regulation: Indigo/Blue (99, 102, 241)
             const alpha = Math.min(0.9, 0.35 + ((absFC - 0.5) / 2.0) * 0.55);
             indicator.style.backgroundColor = `rgba(99, 102, 241, ${alpha})`;
             indicator.style.borderColor = `rgba(99, 102, 241, ${Math.min(1.0, alpha + 0.15)})`;
-            indicator.classList.add("gsh-gene-down-pulse"); // Add pulsing effect
+            indicator.classList.add("gsh-gene-down-pulse");
         } else {
-            // Neutral: Grey
             indicator.style.backgroundColor = `rgba(148, 163, 184, 0.2)`;
             indicator.style.borderColor = `rgba(148, 163, 184, 0.4)`;
         }
         
-        // Append text and then indicator (placing badge right next to the name)
         box.appendChild(geneText);
         box.appendChild(indicator);
         
-        // Label inner text or symbol if needed
-        box.setAttribute("data-label", key);
-        
-        // Setup mouse listeners for rich tooltip popup
-        box.addEventListener("mouseenter", (e) => {
-            let tooltipHtml = `<strong>${key}</strong> (Isoforms: ${item.genes.length}개)<br/>`;
-            tooltipHtml += `<div style="margin-top: 5px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 4px;">`;
-            
-            item.genes.forEach(g => {
-                const fcText = parseFloat(g.log2fc).toFixed(3);
-                const pValText = parseFloat(g.p_value).toExponential(3);
-                let fcColor = '#94a3b8'; // neutral grey
-                if (g.log2fc > 0.5) {
-                    fcColor = '#f87171'; // soft red
-                } else if (g.log2fc < -0.5) {
-                    fcColor = '#818cf8'; // soft blue
-                }
-                
-                tooltipHtml += `<span style="font-weight:600; color:#e2e8f0;">${g.locus_tag}</span> (${g.gene_symbol || 'N/A'}): `;
-                tooltipHtml += `<span style="color:${fcColor}; font-weight:600;">${g.log2fc >= 0 ? '+' : ''}${fcText}</span> `;
-                tooltipHtml += `<span style="color:#a1a1aa; font-size:10px;">(p:${pValText})</span><br/>`;
-                
-                if (g.wt_mean !== undefined && g.mut_mean !== undefined) {
-                    tooltipHtml += `<span style="color:#a1a1aa; font-size:10px; padding-left: 8px;">WT: ${parseFloat(g.wt_mean).toFixed(1)} / Mut: ${parseFloat(g.mut_mean).toFixed(1)}</span><br/>`;
+        // If edit-mode delete tool is active, display a small deletion badge next to custom genes
+        if (isGshEditMode) {
+            box.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (activeGshTool === 'delete') {
+                    if (confirm(`유전자 배지 '${symbol}'을 삭제하시겠습니까?`)) {
+                        deleteGeneElement(key);
+                    }
+                } else if (!activeGshTool) {
+                    // Toggle Selection
+                    if (e.ctrlKey || e.shiftKey) {
+                        if (selectedGenes.has(key)) selectedGenes.delete(key);
+                        else selectedGenes.add(key);
+                    } else {
+                        clearSelection();
+                        selectedGenes.add(key);
+                    }
+                    renderGSHPathway();
                 }
             });
+        }
+        
+        fo.appendChild(box);
+        
+        // Drag and Drop (Bulk Dragging supported)
+        let startMux = 0;
+        let startMuy = 0;
+        let isMoving = false;
+        
+        box.addEventListener("mousedown", (e) => {
+            if (activeGshTool === 'add-arrow') return; // Let background canvas handle drag drawing!
+            
+            e.stopPropagation();
+            if (e.button !== 0) return;
+            if (activeGshTool === 'delete') return; // let click handle delete
+            
+            // Selection handling
+            if (!activeGshTool) {
+                if (e.ctrlKey || e.shiftKey) {
+                    if (selectedGenes.has(key)) selectedGenes.delete(key);
+                    else selectedGenes.add(key);
+                } else {
+                    if (!selectedGenes.has(key)) {
+                        clearSelection();
+                        selectedGenes.add(key);
+                    }
+                }
+                renderGSHPathway();
+            }
+            
+            isMoving = true;
+            box.style.cursor = "grabbing";
+            startMux = e.clientX;
+            startMuy = e.clientY;
+            
+            // Capture offsets of selected genes
+            const startOffsets = {};
+            startOffsets[key] = JSON.parse(JSON.stringify(savedOffsets[key] || { dx: 0, dy: 0 })); // Ensure current dragged gene is captured
+            selectedGenes.forEach(geneKey => {
+                startOffsets[geneKey] = JSON.parse(JSON.stringify(savedOffsets[geneKey] || { dx: 0, dy: 0 }));
+            });
+            
+            // Capture coords of selected nodes
+            const nodesMap = getNodesMap();
+            const startCoords = {};
+            selectedNodes.forEach(nid => {
+                const n = nodesMap[nid];
+                if (n) startCoords[nid] = { x: n.x, y: n.y };
+            });
+            
+            // Capture start coordinates of all selected arrows for delta movement
+            const startArrowCoords = {};
+            selectedArrows.forEach(aid => {
+                const arrow = currentMap.arrows.find(a => a.id === aid);
+                if (arrow) {
+                    startArrowCoords[aid] = {
+                        fromCoords: arrow.fromCoords ? { x: arrow.fromCoords.x, y: arrow.fromCoords.y } : null,
+                        toCoords: arrow.toCoords ? { x: arrow.toCoords.x, y: arrow.toCoords.y } : null
+                    };
+                }
+            });
+            
+            const handleMouseMove = (mvEvent) => {
+                if (!isMoving) return;
+                
+                const deltaMux = mvEvent.clientX - startMux;
+                const deltaMuy = mvEvent.clientY - startMuy;
+                
+                const correctedDx = deltaMux / gshZoomScale;
+                const correctedDy = deltaMuy / gshZoomScale;
+                
+                if (selectedGenes.has(key)) {
+                    // Bulk Move Genes
+                    selectedGenes.forEach(geneKey => {
+                        const sOffset = startOffsets[geneKey];
+                        if (sOffset) {
+                            savedOffsets[geneKey] = {
+                                dx: sOffset.dx + correctedDx,
+                                dy: sOffset.dy + correctedDy
+                            };
+                        }
+                    });
+                    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+                    
+                    // Bulk Move Nodes
+                    selectedNodes.forEach(nid => {
+                        const n = nodesMap[nid];
+                        const sCoord = startCoords[nid];
+                        if (n && sCoord) {
+                            n.x = sCoord.x + correctedDx;
+                            n.y = sCoord.y + correctedDy;
+                        }
+                    });
+                    
+                    // Also bulk move selected arrows
+                    selectedArrows.forEach(aid => {
+                        const arrow = currentMap.arrows.find(a => a.id === aid);
+                        const sArrowCoord = startArrowCoords[aid];
+                        if (arrow && sArrowCoord) {
+                            if (arrow.fromCoords && sArrowCoord.fromCoords) {
+                                arrow.fromCoords.x = sArrowCoord.fromCoords.x + correctedDx;
+                                arrow.fromCoords.y = sArrowCoord.fromCoords.y + correctedDy;
+                            }
+                            if (arrow.toCoords && sArrowCoord.toCoords) {
+                                arrow.toCoords.x = sArrowCoord.toCoords.x + correctedDx;
+                                arrow.toCoords.y = sArrowCoord.toCoords.y + correctedDy;
+                            }
+                        }
+                    });
+                } else {
+                    // Single Gene move
+                    const sOffset = startOffsets[key];
+                    const currentOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                    if (sOffset) {
+                        currentOffsets[key] = {
+                            dx: sOffset.dx + correctedDx,
+                            dy: sOffset.dy + correctedDy
+                        };
+                    }
+                    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(currentOffsets));
+                }
+                
+                renderGSHPathway();
+            };
+            
+            const handleMouseUp = () => {
+                if (isMoving) {
+                    isMoving = false;
+                    box.style.cursor = isGshEditMode ? "move" : "grab";
+                    
+                    document.removeEventListener("mousemove", handleMouseMove);
+                    document.removeEventListener("mouseup", handleMouseUp);
+                    
+                    renderGSHPathway();
+                }
+            };
+            
+            document.addEventListener("mousemove", handleMouseMove);
+            document.addEventListener("mouseup", handleMouseUp);
+        });
+        
+        // Double click to rename custom gene
+        box.addEventListener("dblclick", (e) => {
+            e.stopPropagation();
+            const custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+            const cg = custom.find(g => g.id === key);
+            if (cg) {
+                const newSymbol = prompt("유전자 이름을 수정하세요:", cg.symbol);
+                if (newSymbol !== null && newSymbol.trim() !== "" && newSymbol.trim() !== cg.symbol) {
+                    const cleanSymbol = newSymbol.trim().toUpperCase();
+                    cg.symbol = cleanSymbol;
+                    
+                    // Update log2fc & isoforms for renamed symbol
+                    let repLog2fc = 0.0;
+                    let geneIsoforms = [];
+                    if (gGenes && gGenes.length > 0) {
+                        const match = gGenes.find(g => (g.gene_symbol && g.gene_symbol.toUpperCase() === cleanSymbol) || (g.locus_tag && g.locus_tag.toUpperCase() === cleanSymbol));
+                        if (match) {
+                            repLog2fc = parseFloat(match.log2fc) || 0.0;
+                            geneIsoforms = [match];
+                        }
+                    }
+                    cg.rep_log2fc = repLog2fc;
+                    cg.genes = geneIsoforms;
+                    
+                    localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+                    loadGSHPathwayData();
+                }
+            }
+        });
+        
+        // Tooltip bindings
+        box.addEventListener("mouseenter", (e) => {
+            if (isGshEditMode) return; // disable tooltip in edit mode for clarity
+            
+            let tooltipHtml = `<strong>${symbol}</strong> (Isoforms: ${item.genes ? item.genes.length : 0}개)<br/>`;
+            tooltipHtml += `<div style="margin-top: 5px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 4px;">`;
+            
+            if (item.genes && item.genes.length > 0) {
+                item.genes.forEach(g => {
+                    const fcText = parseFloat(g.log2fc).toFixed(3);
+                    const pValText = parseFloat(g.p_value).toExponential(3);
+                    let fcColor = '#94a3b8';
+                    if (g.log2fc > 0.5) fcColor = '#f87171';
+                    else if (g.log2fc < -0.5) fcColor = '#818cf8';
+                    
+                    tooltipHtml += `<span style="font-weight:600; color:#e2e8f0;">${g.locus_tag}</span> (${g.gene_symbol || 'N/A'}): `;
+                    tooltipHtml += `<span style="color:${fcColor}; font-weight:600;">${g.log2fc >= 0 ? '+' : ''}${fcText}</span> `;
+                    tooltipHtml += `<span style="color:#a1a1aa; font-size:10px;">(p:${pValText})</span><br/>`;
+                });
+            } else {
+                tooltipHtml += `<span style="color:#a1a1aa;">DEG 분석 데이터에 없는 수동 등록 유전자입니다.</span>`;
+            }
             tooltipHtml += `</div>`;
             
             tooltip.innerHTML = tooltipHtml;
             tooltip.style.display = "block";
             
-            // Adjust position anchoring to the indicator box for accuracy
             const rect = indicator.getBoundingClientRect();
             tooltip.style.left = `${window.scrollX + rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`;
             tooltip.style.top = `${window.scrollY + rect.top - tooltip.offsetHeight - 8}px`;
@@ -4119,13 +5058,14 @@ function renderGSHPathwayOverlay(results) {
             tooltip.style.display = "none";
         });
         
-        box.addEventListener("mousemove", (e) => {
-            const rect = box.getBoundingClientRect();
-            tooltip.style.left = `${window.scrollX + rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`;
-            tooltip.style.top = `${window.scrollY + rect.top - tooltip.offsetHeight - 8}px`;
-        });
-        
-        overlayLayer.appendChild(box);
+        overlayLayer.appendChild(fo);
+    });
+    
+    // Filter out deleted default genes if any
+    const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+    deletedDefaults.forEach(delKey => {
+        const foEl = overlayLayer.querySelector(`foreignObject[data-gene="${delKey}"]`);
+        if (foEl) foEl.remove();
     });
 }
 
@@ -4138,24 +5078,93 @@ let gshZoomPanY = 0;
 let gshIsDragging = false;
 let gshStartX = 0;
 let gshStartY = 0;
+let gshSpacePressed = false;
+
+// Global listeners to track Spacebar state
+window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.key === " ") {
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT")) {
+            return;
+        }
+        gshSpacePressed = true;
+        const wrapper = document.querySelector(".gsh-pathway-wrapper");
+        if (wrapper && document.getElementById("custom-pathway-tab").classList.contains("active")) {
+            e.preventDefault();
+            wrapper.style.cursor = "grab";
+        }
+    }
+});
+
+window.addEventListener("keyup", (e) => {
+    if (e.code === "Space" || e.key === " ") {
+        gshSpacePressed = false;
+        const wrapper = document.querySelector(".gsh-pathway-wrapper");
+        if (wrapper && document.getElementById("custom-pathway-tab").classList.contains("active")) {
+            wrapper.style.cursor = isGshEditMode ? "default" : "grab";
+        }
+    }
+});
 
 function initGSHZoomPan() {
     const wrapper = document.querySelector(".gsh-pathway-wrapper");
     const content = document.getElementById("gsh-pathway-content");
     if (!wrapper || !content) return;
     
+    // Disable contextual menu on right click to allow smooth dragging without pops
+    wrapper.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+    });
+    
     // Zoom control buttons
     const btnIn = document.getElementById("btn-zoom-in");
     const btnOut = document.getElementById("btn-zoom-out");
     const btnReset = document.getElementById("btn-zoom-reset");
+    const btnSync = document.getElementById("btn-refresh-gsh-pathway");
     
     if (btnIn) btnIn.addEventListener("click", () => adjustZoom(0.25));
     if (btnOut) btnOut.addEventListener("click", () => adjustZoom(-0.25));
     if (btnReset) btnReset.addEventListener("click", () => resetGSHZoom());
+    if (btnSync) {
+        btnSync.addEventListener("click", () => {
+            if (confirm("현재 활성화된 대사 경로 레이아웃 및 커스텀 노드를 기본값으로 완전히 리셋하시겠습니까?")) {
+                localStorage.removeItem(`gsh_gene_offsets_${currentMapId}`);
+                localStorage.removeItem(`gsh_custom_genes_${currentMapId}`);
+                localStorage.removeItem(`gsh_deleted_default_genes_${currentMapId}`);
+                
+                // If resetting default map, clear map store entry to fetch raw default JSON
+                if (currentMapId === "yeast_gsh_pathway") {
+                    delete pathwayMapsStore["yeast_gsh_pathway"];
+                    saveAllPathwayMaps();
+                } else {
+                    // For custom maps, just empty nodes and arrows
+                    const currentMap = pathwayMapsStore[currentMapId];
+                    if (currentMap) {
+                        currentMap.nodes = [];
+                        currentMap.arrows = [];
+                        saveAllPathwayMaps();
+                    }
+                }
+                
+                // Clear active tool
+                const toggleEdit = document.getElementById("toggle-edit-mode");
+                if (toggleEdit) {
+                    toggleEdit.checked = false;
+                    isGshEditMode = false;
+                    document.getElementById("gsh-editor-toolbar").style.display = "none";
+                    setGshActiveTool(null);
+                }
+                
+                clearSelection();
+                loadGSHPathwayData();
+                resetGSHZoom();
+                alert("맵 레이아웃과 데이터가 초기값으로 완전히 리셋되었습니다.");
+            }
+        });
+    }
     
     // Mouse Wheel Zoom
     wrapper.addEventListener("wheel", (e) => {
-        // Only zoom if custom-pathway-tab is active and visible
         if (document.getElementById("custom-pathway-tab").classList.contains("active")) {
             e.preventDefault();
             const zoomFactor = 0.08;
@@ -4178,16 +5187,269 @@ function initGSHZoomPan() {
         }
     }, { passive: false });
     
-    // Mouse Drag Pan
+    // Mouse Drag Pan / Marquee Selection Handler
+    let isMarqueeSelecting = false;
+    let marqueeStartX = 0;
+    let marqueeStartY = 0;
+    const marqueeEl = document.getElementById("selection-marquee");
+    
     wrapper.addEventListener("mousedown", (e) => {
-        if (e.target.classList.contains("gsh-gene-hotspot") || e.target.closest("button")) {
+        // Check if we should pan:
+        // We pan if: 1) edit mode is OFF, OR 2) Space key is pressed, OR 3) Right click (2) or Middle click (1) is used
+        const shouldPan = !isGshEditMode || gshSpacePressed || e.button === 1 || e.button === 2;
+        
+        if (shouldPan) {
+            if (e.target.closest(".gsh-gene-overlay-container") || e.target.closest("button") || e.target.closest("a")) {
+                return;
+            }
+            gshIsDragging = true;
+            wrapper.style.cursor = "grabbing";
+            gshStartX = e.clientX - gshZoomPanX;
+            gshStartY = e.clientY - gshZoomPanY;
+            e.preventDefault();
             return;
         }
-        if (e.button !== 0) return;
-        gshIsDragging = true;
-        wrapper.style.cursor = "grabbing";
-        gshStartX = e.clientX - gshZoomPanX;
-        gshStartY = e.clientY - gshZoomPanY;
+        
+        // Otherwise, perform Marquee Selection or Arrow Drawing in Edit Mode
+        if (isGshEditMode) {
+            if (activeGshTool === 'add-arrow') {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const currentMap = pathwayMapsStore[currentMapId];
+                if (!currentMap) return;
+                
+                const mapWidth = currentMap.width || 1024;
+                const mapHeight = currentMap.height || 580;
+                
+                const svgEl = document.getElementById("gsh-pathway-svg");
+                if (!svgEl) return;
+                
+                // Convert mouse position to Zoom & Pan corrected SVG coordinates
+                const getSvgCoords = (clientX, clientY) => {
+                    const rect = svgEl.getBoundingClientRect();
+                    const x = ((clientX - rect.left) / rect.width) * mapWidth;
+                    const y = ((clientY - rect.top) / rect.height) * mapHeight;
+                    return { x: Math.round(x), y: Math.round(y) };
+                };
+                
+                const startPt = getSvgCoords(e.clientX, e.clientY);
+                
+                // Create dashed preview path
+                const arrowsLayer = document.getElementById("gsh-pathway-arrows");
+                const tempPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                tempPath.setAttribute("stroke", "#3b82f6");
+                tempPath.setAttribute("stroke-width", "2");
+                tempPath.setAttribute("stroke-dasharray", "4,4");
+                tempPath.setAttribute("fill", "none");
+                tempPath.setAttribute("marker-end", "url(#arrowhead)");
+                tempPath.setAttribute("d", `M ${startPt.x} ${startPt.y} L ${startPt.x} ${startPt.y}`);
+                if (arrowsLayer) arrowsLayer.appendChild(tempPath);
+                
+                const handleArrowDrawingMove = (mvEvent) => {
+                    let currentPt = getSvgCoords(mvEvent.clientX, mvEvent.clientY);
+                    
+                    if (mvEvent.ctrlKey) {
+                        const dx = Math.abs(currentPt.x - startPt.x);
+                        const dy = Math.abs(currentPt.y - startPt.y);
+                        if (dx > dy) {
+                            currentPt.y = startPt.y;
+                        } else {
+                            currentPt.x = startPt.x;
+                        }
+                    }
+                    
+                    tempPath.setAttribute("d", `M ${startPt.x} ${startPt.y} L ${currentPt.x} ${currentPt.y}`);
+                };
+                
+                const handleArrowDrawingUp = (muEvent) => {
+                    document.removeEventListener("mousemove", handleArrowDrawingMove);
+                    document.removeEventListener("mouseup", handleArrowDrawingUp);
+                    
+                    tempPath.remove();
+                    
+                    let endPt = getSvgCoords(muEvent.clientX, muEvent.clientY);
+                    
+                    if (muEvent.ctrlKey) {
+                        const dx = Math.abs(endPt.x - startPt.x);
+                        const dy = Math.abs(endPt.y - startPt.y);
+                        if (dx > dy) {
+                            endPt.y = startPt.y;
+                        } else {
+                            endPt.x = startPt.x;
+                        }
+                    }
+                    
+                    const dist = Math.sqrt(Math.pow(endPt.x - startPt.x, 2) + Math.pow(endPt.y - startPt.y, 2));
+                    
+                    if (dist > 8) {
+                        const selectedType = document.querySelector('input[name="arrow-type"]:checked')?.value || 'straight';
+                        const selectedDir = document.querySelector('input[name="arrow-dir"]:checked')?.value || 'forward';
+                        
+                        const newArrowId = `arrow_${Date.now()}`;
+                        const newArrow = {
+                            id: newArrowId,
+                            from: null,
+                            to: null,
+                            fromCoords: startPt,
+                            toCoords: endPt,
+                            type: selectedType,
+                            direction: selectedDir
+                        };
+                        currentMap.arrows.push(newArrow);
+                        saveAllPathwayMaps();
+                        // setGshActiveTool(null); // Keep tool active for consecutive drawing
+                        renderGSHPathway();
+                    }
+                };
+                
+                document.addEventListener("mousemove", handleArrowDrawingMove);
+                document.addEventListener("mouseup", handleArrowDrawingUp);
+                return;
+            }
+            
+            // Drag marquee selection ONLY when clicking SVG background
+            if (e.target.tagName !== "rect" && e.target.id !== "gsh-pathway-svg") {
+                return;
+            }
+            if (e.button !== 0) return;
+            
+            if (activeGshTool) return; // ignore marquee selection when edit tools are active
+            
+            isMarqueeSelecting = true;
+            const rect = wrapper.getBoundingClientRect();
+            marqueeStartX = e.clientX - rect.left;
+            marqueeStartY = e.clientY - rect.top;
+            
+            marqueeEl.style.left = `${marqueeStartX}px`;
+            marqueeEl.style.top = `${marqueeStartY}px`;
+            marqueeEl.style.width = "0px";
+            marqueeEl.style.height = "0px";
+            marqueeEl.style.display = "block";
+            
+            if (!e.ctrlKey && !e.shiftKey) {
+                clearSelection();
+                renderGSHPathway();
+            }
+            
+            const handleMarqueeMove = (mvEvent) => {
+                if (!isMarqueeSelecting) return;
+                
+                const currentX = mvEvent.clientX - rect.left;
+                const currentY = mvEvent.clientY - rect.top;
+                
+                const x = Math.min(marqueeStartX, currentX);
+                const y = Math.min(marqueeStartY, currentY);
+                const w = Math.abs(marqueeStartX - currentX);
+                const h = Math.abs(marqueeStartY - currentY);
+                
+                marqueeEl.style.left = `${x}px`;
+                marqueeEl.style.top = `${y}px`;
+                marqueeEl.style.width = `${w}px`;
+                marqueeEl.style.height = `${h}px`;
+            };
+            
+            const handleMarqueeUp = (muEvent) => {
+                if (!isMarqueeSelecting) return;
+                isMarqueeSelecting = false;
+                marqueeEl.style.display = "none";
+                
+                document.removeEventListener("mousemove", handleMarqueeMove);
+                document.removeEventListener("mouseup", handleMarqueeUp);
+                
+                const currentX = muEvent.clientX - rect.left;
+                const currentY = muEvent.clientY - rect.top;
+                
+                const x1 = Math.min(marqueeStartX, currentX);
+                const y1 = Math.min(marqueeStartY, currentY);
+                const x2 = Math.max(marqueeStartX, currentX);
+                const y2 = Math.max(marqueeStartY, currentY);
+                
+                // If it is just a tiny click, do not perform box selection
+                if (x2 - x1 < 4 && y2 - y1 < 4) {
+                    return;
+                }
+                
+                const currentMap = pathwayMapsStore[currentMapId];
+                if (!currentMap) return;
+                
+                const mapWidth = currentMap.width || 1024;
+                const mapHeight = currentMap.height || 580;
+                
+                const svgEl = document.getElementById("gsh-pathway-svg");
+                const svgRect = svgEl.getBoundingClientRect();
+                
+                // Helper: determines if relative SVG coordinate (cx, cy) falls within marquee selection rectangle
+                const isPointInMarquee = (cx, cy) => {
+                    const screenX = svgRect.left - rect.left + (cx / mapWidth) * svgRect.width;
+                    const screenY = svgRect.top - rect.top + (cy / mapHeight) * svgRect.height;
+                    return screenX >= x1 && screenX <= x2 && screenY >= y1 && screenY <= y2;
+                };
+                
+                // 1. Gather nodes
+                currentMap.nodes.forEach(node => {
+                    const corners = [
+                        { x: node.x, y: node.y },
+                        { x: node.x + node.w, y: node.y },
+                        { x: node.x, y: node.y + node.h },
+                        { x: node.x + node.w, y: node.y + node.h }
+                    ];
+                    const isInside = corners.some(c => isPointInMarquee(c.x, c.y));
+                    if (isInside) {
+                        selectedNodes.add(node.id);
+                    }
+                });
+                
+                // 2. Gather genes
+                const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                
+                const mergedResults = JSON.parse(JSON.stringify(window.lastGSHResults || {}));
+                customGenes.forEach(cg => {
+                    if (!mergedResults[cg.symbol]) {
+                        mergedResults[cg.symbol] = { x: cg.x, y: cg.y };
+                    }
+                });
+                
+                const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+                deletedDefaults.forEach(delKey => {
+                    delete mergedResults[delKey];
+                });
+                
+                Object.keys(mergedResults).forEach(key => {
+                    const item = mergedResults[key];
+                    const baseX = (item.x * mapWidth) / 100;
+                    const baseY = (item.y * mapHeight) / 100;
+                    const offset = savedOffsets[key] || { dx: 0, dy: 0 };
+                    const finalX = baseX + offset.dx;
+                    const finalY = baseY + offset.dy;
+                    
+                    if (isPointInMarquee(finalX, finalY)) {
+                        selectedGenes.add(key);
+                    }
+                });
+                
+                // 3. Gather arrows (if both ends or either end falls inside selection rectangle)
+                currentMap.arrows.forEach(arrow => {
+                    const nodesMap = getNodesMap();
+                    const fromNode = arrow.from ? nodesMap[arrow.from] : null;
+                    const toNode = arrow.to ? nodesMap[arrow.to] : null;
+                    
+                    let p1 = fromNode ? { x: fromNode.x + fromNode.w / 2, y: fromNode.y + fromNode.h / 2 } : (arrow.fromCoords || { x: 100, y: 100 });
+                    let p2 = toNode ? { x: toNode.x + toNode.w / 2, y: toNode.y + toNode.h / 2 } : (arrow.toCoords || { x: 200, y: 200 });
+                    
+                    if (isPointInMarquee(p1.x, p1.y) || isPointInMarquee(p2.x, p2.y)) {
+                        selectedArrows.add(arrow.id);
+                    }
+                });
+                
+                renderGSHPathway();
+            };
+            
+            document.addEventListener("mousemove", handleMarqueeMove);
+            document.addEventListener("mouseup", handleMarqueeUp);
+        }
     });
     
     window.addEventListener("mousemove", (e) => {
@@ -4200,7 +5462,7 @@ function initGSHZoomPan() {
     window.addEventListener("mouseup", () => {
         if (gshIsDragging) {
             gshIsDragging = false;
-            wrapper.style.cursor = "grab";
+            wrapper.style.cursor = isGshEditMode ? "default" : "grab";
         }
     });
 }
@@ -4232,7 +5494,7 @@ function resetGSHZoom() {
     applyTransform();
     
     const wrapper = document.querySelector(".gsh-pathway-wrapper");
-    if (wrapper) wrapper.style.cursor = "grab";
+    if (wrapper) wrapper.style.cursor = isGshEditMode ? "default" : "grab";
 }
 
 function applyTransform() {
@@ -4241,3 +5503,641 @@ function applyTransform() {
         content.style.transform = `translate(${gshZoomPanX}px, ${gshZoomPanY}px) scale(${gshZoomScale})`;
     }
 }
+
+// Keyboard Hotkey Bindings (Delete, Copy Ctrl+C, Paste Ctrl+V)
+function initGSHHotkeyBindings() {
+    document.addEventListener("keydown", (e) => {
+        if (!isGshEditMode) return;
+        
+        // Prevent hotkeys from triggering when user is editing input forms
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT")) {
+            return;
+        }
+        
+        const currentMap = pathwayMapsStore[currentMapId];
+        if (!currentMap) return;
+        
+        // Delete Selection
+        if (e.key === "Delete" || e.key === "Backspace") {
+            e.preventDefault();
+            const totalSelected = selectedNodes.size + selectedArrows.size + selectedGenes.size;
+            if (totalSelected === 0) return;
+            
+            if (confirm(`선택한 ${totalSelected}개의 요소를 삭제하시겠습니까?`)) {
+                const nodesMap = getNodesMap();
+                
+                // 1. Delete Arrows
+                currentMap.arrows = currentMap.arrows.filter(arrow => !selectedArrows.has(arrow.id));
+                selectedArrows.clear();
+                
+                // 2. Delete Nodes (with boundary backup endpoints)
+                selectedNodes.forEach(nid => {
+                    const node = nodesMap[nid];
+                    if (node) {
+                        currentMap.arrows.forEach(arrow => {
+                            if (arrow.from === node.id) {
+                                const pathStr = calculateArrowPath(arrow, nodesMap);
+                                const match = pathStr.match(/M\s+([\d.-]+)\s+([\d.-]+)/);
+                                if (match) {
+                                    arrow.fromCoords = { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+                                }
+                                arrow.from = null;
+                            }
+                            if (arrow.to === node.id) {
+                                const pathStr = calculateArrowPath(arrow, nodesMap);
+                                arrow.toCoords = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
+                                arrow.to = null;
+                            }
+                        });
+                        currentMap.nodes = currentMap.nodes.filter(n => n.id !== nid);
+                    }
+                });
+                selectedNodes.clear();
+                
+                // 3. Delete Genes
+                selectedGenes.forEach(key => {
+                    let custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                    const originLen = custom.length;
+                    custom = custom.filter(cg => cg.symbol !== key);
+                    localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+                    
+                    const offsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                    delete offsets[key];
+                    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(offsets));
+                    
+                    if (originLen === custom.length) {
+                        const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+                        deletedDefaults.push(key);
+                        localStorage.setItem(`gsh_deleted_default_genes_${currentMapId}`, JSON.stringify(deletedDefaults));
+                    }
+                });
+                selectedGenes.clear();
+                
+                saveAllPathwayMaps();
+                loadGSHPathwayData();
+            }
+        }
+        
+        // Ctrl + C (Copy)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+            e.preventDefault();
+            
+            const nodesMap = getNodesMap();
+            const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+            const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+            
+            const copiedNodes = [];
+            const copiedArrows = [];
+            const copiedGenes = [];
+            
+            selectedNodes.forEach(nid => {
+                const node = nodesMap[nid];
+                if (node) copiedNodes.push(JSON.parse(JSON.stringify(node)));
+            });
+            
+            selectedArrows.forEach(aid => {
+                const arrow = currentMap.arrows.find(a => a.id === aid);
+                if (arrow) copiedArrows.push(JSON.parse(JSON.stringify(arrow)));
+            });
+            
+            selectedGenes.forEach(key => {
+                const isCustom = customGenes.some(cg => cg.symbol === key);
+                const offset = savedOffsets[key] || { dx: 0, dy: 0 };
+                
+                let geneObj = null;
+                if (isCustom) {
+                    const cg = customGenes.find(g => g.symbol === key);
+                    geneObj = JSON.parse(JSON.stringify(cg));
+                    geneObj.isCustom = true;
+                } else {
+                    const deg = window.lastGSHResults[key];
+                    if (deg) {
+                        geneObj = {
+                            symbol: key,
+                            x: deg.x,
+                            y: deg.y,
+                            rep_log2fc: deg.rep_log2fc,
+                            genes: deg.genes,
+                            isCustom: false
+                        };
+                    }
+                }
+                if (geneObj) {
+                    geneObj.dx = offset.dx;
+                    geneObj.dy = offset.dy;
+                    copiedGenes.push(geneObj);
+                }
+            });
+            
+            if (copiedNodes.length > 0 || copiedArrows.length > 0 || copiedGenes.length > 0) {
+                clipboardBuffer = {
+                    nodes: copiedNodes,
+                    arrows: copiedArrows,
+                    genes: copiedGenes
+                };
+            }
+        }
+        
+        // Ctrl + V (Paste)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+            e.preventDefault();
+            if (!clipboardBuffer) return;
+            
+            const idMap = {};
+            const timestamp = Date.now();
+            clearSelection();
+            
+            // Paste Nodes
+            clipboardBuffer.nodes.forEach((oldNode, idx) => {
+                const newNode = JSON.parse(JSON.stringify(oldNode));
+                newNode.id = `node_${timestamp}_${idx}_${Math.round(Math.random() * 100)}`;
+                newNode.x += 40; // paste spacing offset
+                newNode.y += 40;
+                idMap[oldNode.id] = newNode.id;
+                
+                currentMap.nodes.push(newNode);
+                selectedNodes.add(newNode.id);
+            });
+            
+            // Paste Genes
+            const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+            const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+            
+            clipboardBuffer.genes.forEach((g) => {
+                let symbol = g.symbol;
+                let suffix = 1;
+                while (
+                    customGenes.some(cg => cg.symbol === symbol) || 
+                    (window.lastGSHResults[symbol] && !clipboardBuffer.genes.some(bg => bg.symbol === symbol && bg.isCustom === false))
+                ) {
+                    symbol = `${g.symbol}_copy${suffix}`;
+                    suffix++;
+                }
+                
+                customGenes.push({
+                    symbol: symbol,
+                    x: g.x,
+                    y: g.y,
+                    rep_log2fc: g.rep_log2fc,
+                    genes: g.genes
+                });
+                
+                savedOffsets[symbol] = {
+                    dx: g.dx + 40,
+                    dy: g.dy + 40
+                };
+                
+                selectedGenes.add(symbol);
+            });
+            
+            localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(customGenes));
+            localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+            
+            // Paste Arrows
+            clipboardBuffer.arrows.forEach((oldArrow, idx) => {
+                const newArrow = JSON.parse(JSON.stringify(oldArrow));
+                newArrow.id = `arr_${timestamp}_${idx}_${Math.round(Math.random() * 100)}`;
+                
+                if (oldArrow.from && idMap[oldArrow.from]) {
+                    newArrow.from = idMap[oldArrow.from];
+                } else if (oldArrow.from) {
+                    newArrow.from = oldArrow.from;
+                }
+                
+                if (oldArrow.to && idMap[oldArrow.to]) {
+                    newArrow.to = idMap[oldArrow.to];
+                } else if (oldArrow.to) {
+                    newArrow.to = oldArrow.to;
+                }
+                
+                if (newArrow.fromCoords) {
+                    newArrow.fromCoords.x += 40;
+                    newArrow.fromCoords.y += 40;
+                }
+                if (newArrow.toCoords) {
+                    newArrow.toCoords.x += 40;
+                    newArrow.toCoords.y += 40;
+                }
+                
+                currentMap.arrows.push(newArrow);
+                selectedArrows.add(newArrow.id);
+            });
+            
+            saveAllPathwayMaps();
+            loadGSHPathwayData();
+        }
+    });
+}
+
+// ----------------------------------------------------------------------
+// Custom Pathway Editor Event Bindings
+// ----------------------------------------------------------------------
+function initGSHEditorBindings() {
+    const toggleEdit = document.getElementById("toggle-edit-mode");
+    const toolbar = document.getElementById("gsh-editor-toolbar");
+    const svgEl = document.getElementById("gsh-pathway-svg");
+    const mapSelect = document.getElementById("pathway-map-select");
+    
+    if (!toggleEdit || !toolbar || !svgEl) return;
+    
+    // Bind global keyboard shortcuts
+    initGSHHotkeyBindings();
+    
+    // Map dropdown change listener
+    if (mapSelect) {
+        mapSelect.addEventListener("change", (e) => {
+            selectAndLoadMap(e.target.value);
+        });
+    }
+    
+    // Create new map
+    const btnCreateMap = document.getElementById("btn-create-map");
+    if (btnCreateMap) {
+        btnCreateMap.addEventListener("click", () => {
+            const name = prompt("새로운 대사 경로 맵 이름을 입력하세요:");
+            if (name && name.trim() !== "") {
+                const newMapId = `map_${Date.now()}`;
+                pathwayMapsStore[newMapId] = {
+                    name: name.trim(),
+                    width: 1024,
+                    height: 580,
+                    nodes: [],
+                    arrows: []
+                };
+                saveAllPathwayMaps();
+                currentMapId = newMapId;
+                loadGSHPathwayData();
+                alert(`'${name.trim()}' 맵이 성공적으로 생성되었습니다.`);
+            }
+        });
+    }
+    
+    // Rename current map
+    const btnRenameMap = document.getElementById("btn-rename-map");
+    if (btnRenameMap) {
+        btnRenameMap.addEventListener("click", () => {
+            const currentMap = pathwayMapsStore[currentMapId];
+            if (!currentMap) return;
+            const newName = prompt("맵의 새로운 이름을 입력하세요:", currentMap.name);
+            if (newName && newName.trim() !== "" && newName.trim() !== currentMap.name) {
+                currentMap.name = newName.trim();
+                saveAllPathwayMaps();
+                loadGSHPathwayData();
+                alert("맵 이름이 변경되었습니다.");
+            }
+        });
+    }
+    
+    // Delete current map
+    const btnDeleteMap = document.getElementById("btn-delete-map");
+    if (btnDeleteMap) {
+        btnDeleteMap.addEventListener("click", () => {
+            if (currentMapId === "yeast_gsh_pathway") {
+                alert("기본 글루타치온 생합성 맵은 삭제할 수 없습니다.");
+                return;
+            }
+            const currentMap = pathwayMapsStore[currentMapId];
+            if (!currentMap) return;
+            if (confirm(`'${currentMap.name}' 맵을 정말 완전히 삭제하시겠습니까?`)) {
+                // Delete references
+                localStorage.removeItem(`gsh_gene_offsets_${currentMapId}`);
+                localStorage.removeItem(`gsh_custom_genes_${currentMapId}`);
+                localStorage.removeItem(`gsh_deleted_default_genes_${currentMapId}`);
+                
+                delete pathwayMapsStore[currentMapId];
+                saveAllPathwayMaps();
+                currentMapId = "yeast_gsh_pathway";
+                loadGSHPathwayData();
+                alert("맵이 완전히 삭제되었습니다.");
+            }
+        });
+    }
+    
+    // Save current pathway map explicitly
+    const btnSavePathway = document.getElementById("btn-save-gsh-pathway");
+    if (btnSavePathway) {
+        btnSavePathway.addEventListener("click", () => {
+            saveAllPathwayMaps();
+            alert("현재 대사 경로의 노드, 화살표, 유전자 배지 정렬 배치가 성공적으로 저장되었습니다.");
+        });
+    }
+    
+    // Apply Canvas Dimensions
+    const btnApplySize = document.getElementById("btn-apply-size");
+    if (btnApplySize) {
+        btnApplySize.addEventListener("click", () => {
+            const widthVal = parseInt(document.getElementById("canvas-width-input").value, 10);
+            const heightVal = parseInt(document.getElementById("canvas-height-input").value, 10);
+            
+            if (isNaN(widthVal) || isNaN(heightVal) || widthVal < 200 || heightVal < 200) {
+                alert("가로세로 크기는 최소 200px 이상 입력해야 합니다.");
+                return;
+            }
+            
+            const currentMap = pathwayMapsStore[currentMapId];
+            if (currentMap) {
+                const oldWidth = currentMap.width || 1024;
+                const oldHeight = currentMap.height || 580;
+                
+                // Get all genes (defaults + custom) to perform offset adjustment
+                const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                
+                // Merge all genes
+                const mergedResults = JSON.parse(JSON.stringify(window.lastGSHResults || {}));
+                customGenes.forEach(cg => {
+                    if (!mergedResults[cg.symbol]) {
+                        mergedResults[cg.symbol] = { x: cg.x, y: cg.y };
+                    }
+                });
+                
+                // Adjust dx and dy offsets for all genes so their absolute coordinate is preserved
+                Object.keys(mergedResults).forEach(key => {
+                    const item = mergedResults[key];
+                    const oldOffset = savedOffsets[key] || { dx: 0, dy: 0 };
+                    
+                    const newDx = oldOffset.dx + (item.x * (oldWidth - widthVal)) / 100;
+                    const newDy = oldOffset.dy + (item.y * (oldHeight - heightVal)) / 100;
+                    
+                    savedOffsets[key] = {
+                        dx: Math.round(newDx * 10) / 10,
+                        dy: Math.round(newDy * 10) / 10
+                    };
+                });
+                localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+                
+                currentMap.width = widthVal;
+                currentMap.height = heightVal;
+                saveAllPathwayMaps();
+                selectAndLoadMap(currentMapId);
+                alert(`맵의 해상도가 ${widthVal}x${heightVal}로 조절되었으며, 유전자 정렬 배치가 픽셀 단위로 자동 고정 보정되었습니다.`);
+            }
+        });
+    }
+    
+    toggleEdit.addEventListener("change", (e) => {
+        isGshEditMode = e.target.checked;
+        clearSelection();
+        if (isGshEditMode) {
+            toolbar.style.display = "flex";
+        } else {
+            toolbar.style.display = "none";
+            setGshActiveTool(null);
+        }
+        renderGSHPathway();
+        resetGSHZoom(); // Align view when starting edit
+    });
+    
+    const toolButtons = {
+        'tool-add-node': 'add-node',
+        'tool-add-arrow': 'add-arrow',
+        'tool-add-gene': 'add-gene',
+        'tool-delete': 'delete'
+    };
+    
+    Object.keys(toolButtons).forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.addEventListener("click", () => {
+                const tool = toolButtons[btnId];
+                if (activeGshTool === tool) {
+                    setGshActiveTool(null);
+                } else {
+                    setGshActiveTool(tool);
+                }
+            });
+        }
+    });
+    
+    svgEl.addEventListener("click", (e) => {
+        if (!isGshEditMode || !activeGshTool) return;
+        
+        if (e.target.tagName !== "rect" && e.target.id !== "gsh-pathway-svg") return;
+        
+        const currentMap = pathwayMapsStore[currentMapId];
+        if (!currentMap) return;
+        
+        const mapWidth = currentMap.width || 1024;
+        const mapHeight = currentMap.height || 580;
+        
+        const rect = svgEl.getBoundingClientRect();
+        const clickX = ((e.clientX - rect.left) / rect.width) * mapWidth;
+        const clickY = ((e.clientY - rect.top) / rect.height) * mapHeight;
+        
+        if (activeGshTool === 'add-node') {
+            const name = prompt("새로운 대사산물 이름을 입력하세요:");
+            if (name && name.trim() !== "") {
+                const newId = `node_${Date.now()}`;
+                const newNode = {
+                    id: newId,
+                    label: name.trim(),
+                    x: Math.round(clickX - 40),
+                    y: Math.round(clickY - 12),
+                    w: 80,
+                    h: 24,
+                    rx: 12,
+                    type: "standard"
+                };
+                currentMap.nodes.push(newNode);
+                saveAllPathwayMaps();
+                setGshActiveTool(null);
+                renderGSHPathway();
+            }
+        } else if (activeGshTool === 'add-gene') {
+            const name = prompt("새로운 유전자 심볼(예: MET2)을 입력하세요:");
+            if (name && name.trim() !== "") {
+                const symbol = name.trim().toUpperCase();
+                
+                let repLog2fc = 0.0;
+                let geneIsoforms = [];
+                if (gGenes && gGenes.length > 0) {
+                    const match = gGenes.find(g => (g.gene_symbol && g.gene_symbol.toUpperCase() === symbol) || (g.locus_tag && g.locus_tag.toUpperCase() === symbol));
+                    if (match) {
+                        repLog2fc = parseFloat(match.log2fc) || 0.0;
+                        geneIsoforms = [match];
+                    }
+                }
+                
+                const percentX = (clickX / mapWidth) * 100;
+                const percentY = (clickY / mapHeight) * 100;
+                
+                const custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                const newGeneId = `gene_${Date.now()}_${Math.round(Math.random() * 1000)}`;
+                custom.push({
+                    id: newGeneId,
+                    symbol: symbol,
+                    x: percentX,
+                    y: percentY,
+                    rep_log2fc: repLog2fc,
+                    genes: geneIsoforms
+                });
+                localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+                
+                setGshActiveTool(null);
+                loadGSHPathwayData();
+            }
+        }
+    });
+    
+    // Node Align Tool Handlers
+    const alignTypes = ['left', 'center', 'right', 'top', 'middle', 'bottom'];
+    alignTypes.forEach(type => {
+        const btn = document.getElementById(`btn-align-${type}`);
+        if (btn) {
+            btn.addEventListener("click", () => {
+                alignSelectedNodes(type);
+            });
+        }
+    });
+    
+    // Node Color Picker Click Handlers
+    const colorBtns = document.querySelectorAll(".node-color-btn");
+    colorBtns.forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const colorKey = e.target.getAttribute("data-color");
+            if (colorKey) {
+                changeSelectedNodesColor(colorKey);
+            }
+        });
+    });
+
+    // Export layout JSON
+    const btnExport = document.getElementById("btn-export-layout");
+    if (btnExport) {
+        btnExport.addEventListener("click", () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(pathwayMapsStore[currentMapId], null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `${pathwayMapsStore[currentMapId].name.replace(/\s+/g, '_')}_custom_layout.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+    }
+    
+    // Import layout JSON trigger
+    const btnImportTrigger = document.getElementById("btn-import-layout-trigger");
+    const fileImportInput = document.getElementById("file-import-layout");
+    if (btnImportTrigger && fileImportInput) {
+        btnImportTrigger.addEventListener("click", () => {
+            fileImportInput.click();
+        });
+        
+        fileImportInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const parsed = JSON.parse(event.target.result);
+                    if (parsed.nodes && parsed.arrows) {
+                        const currentMap = pathwayMapsStore[currentMapId];
+                        if (currentMap) {
+                            currentMap.width = parsed.width || currentMap.width || 1024;
+                            currentMap.height = parsed.height || currentMap.height || 580;
+                            currentMap.nodes = parsed.nodes;
+                            currentMap.arrows = parsed.arrows;
+                            saveAllPathwayMaps();
+                            selectAndLoadMap(currentMapId);
+                            alert("대사 경로 레이아웃이 성공적으로 업로드 및 갱신되었습니다!");
+                        }
+                    } else {
+                        alert("올바른 대사 경로 레이아웃 형식이 아닙니다 (nodes와 arrows 속성이 필요합니다).");
+                    }
+                } catch (err) {
+                    alert("JSON 파일 파싱 실패: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+}
+
+function setGshActiveTool(tool) {
+    activeGshTool = tool;
+    selectedArrowSourceId = null; // reset arrow state
+    
+    const btns = document.querySelectorAll(".edit-tool-btn");
+    btns.forEach(btn => btn.classList.remove("active"));
+    
+    const toolBtnMap = {
+        'add-node': 'tool-add-node',
+        'add-arrow': 'tool-add-arrow',
+        'add-gene': 'tool-add-gene',
+        'delete': 'tool-delete'
+    };
+    
+    if (tool && toolBtnMap[tool]) {
+        const activeBtn = document.getElementById(toolBtnMap[tool]);
+        if (activeBtn) activeBtn.classList.add("active");
+    }
+}
+
+function alignSelectedNodes(alignmentType) {
+    if (selectedNodes.size < 2) {
+        alert("정렬 기능을 사용하려면 최소 2개 이상의 노드를 선택해 주세요.");
+        return;
+    }
+    
+    const nodesMap = getNodesMap();
+    const selNodes = Array.from(selectedNodes).map(id => nodesMap[id]).filter(n => n !== undefined);
+    if (selNodes.length < 2) return;
+    
+    if (alignmentType === 'left') {
+        const minX = Math.min(...selNodes.map(n => n.x));
+        selNodes.forEach(n => { n.x = minX; });
+    } else if (alignmentType === 'center') {
+        const avgCenterX = selNodes.reduce((sum, n) => sum + (n.x + n.w / 2), 0) / selNodes.length;
+        selNodes.forEach(n => { n.x = Math.round(avgCenterX - n.w / 2); });
+    } else if (alignmentType === 'right') {
+        const maxRight = Math.max(...selNodes.map(n => n.x + n.w));
+        selNodes.forEach(n => { n.x = maxRight - n.w; });
+    } else if (alignmentType === 'top') {
+        const minY = Math.min(...selNodes.map(n => n.y));
+        selNodes.forEach(n => { n.y = minY; });
+    } else if (alignmentType === 'middle') {
+        const avgCenterY = selNodes.reduce((sum, n) => sum + (n.y + n.h / 2), 0) / selNodes.length;
+        selNodes.forEach(n => { n.y = Math.round(avgCenterY - n.h / 2); });
+    } else if (alignmentType === 'bottom') {
+        const maxBottom = Math.max(...selNodes.map(n => n.y + n.h));
+        selNodes.forEach(n => { n.y = maxBottom - n.h; });
+    }
+    
+    saveAllPathwayMaps();
+    renderGSHPathway();
+}
+
+function changeSelectedNodesColor(colorKey) {
+    if (selectedNodes.size === 0) {
+        alert("색상을 변경할 노드를 먼저 선택해 주세요.");
+        return;
+    }
+    
+    const colorMap = {
+        blue: { fill: "#eff6ff", stroke: "#3b82f6", text: "#1e3a8a" },
+        green: { fill: "#ecfdf5", stroke: "#10b981", text: "#065f46" },
+        red: { fill: "#fef2f2", stroke: "#ef4444", text: "#7f1d1d" },
+        yellow: { fill: "#fffbeb", stroke: "#f59e0b", text: "#78350f" },
+        purple: { fill: "#faf5ff", stroke: "#8b5cf6", text: "#581c87" },
+        gray: { fill: "#f8fafc", stroke: "#64748b", text: "#334155" }
+    };
+    
+    const colors = colorMap[colorKey];
+    if (!colors) return;
+    
+    const nodesMap = getNodesMap();
+    selectedNodes.forEach(nid => {
+        const node = nodesMap[nid];
+        if (node) {
+            node.fillColor = colors.fill;
+            node.strokeColor = colors.stroke;
+            node.textColor = colors.text;
+        }
+    });
+    
+    saveAllPathwayMaps();
+    renderGSHPathway();
+}
+

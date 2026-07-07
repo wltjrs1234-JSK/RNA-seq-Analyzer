@@ -1,0 +1,253 @@
+<svg id="gsh-pathway-svg" viewBox="0 0 1024 580" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; font-family: 'Outfit', 'Inter', -apple-system, sans-serif;">
+  <defs>
+    <!-- Arrowhead markers -->
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569" />
+    </marker>
+    <marker id="arrowhead-reverse" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 10 1 L 0 5 L 10 9 z" fill="#475569" />
+    </marker>
+    <!-- Node glow shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.04" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="1024" height="580" fill="#f8fafc" rx="8" />
+
+  <!-- GRID PATTERN (Subtle biotech engineering background grid) -->
+  <g stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="10 10" opacity="0.15">
+    <path d="M 100 0 L 100 580 M 200 0 L 200 580 M 300 0 L 300 580 M 400 0 L 400 580 M 500 0 L 500 580 M 600 0 L 600 580 M 700 0 L 700 580 M 800 0 L 800 580 M 900 0 L 900 580" />
+    <path d="M 0 100 L 1024 100 M 0 200 L 1024 200 M 0 300 L 1024 300 M 0 400 L 1024 400 M 0 500 L 1024 500" />
+  </g>
+
+  <!-- Title / Legend Label -->
+  <text x="30" y="40" font-size="16" font-weight="700" fill="#0f172a" letter-spacing="-0.5">S. cerevisiae Glutathione Synthesis &amp; Central Carbon Loop</text>
+  <text x="30" y="58" font-size="11" font-weight="500" fill="#64748b">100% Vector Interactive Pathway Map</text>
+
+  <!-- ==================== METABOLITE NODES ==================== -->
+  
+  <!-- Left Side: Sulfate Reduction & Methionine Pathway -->
+  <g class="nodes" font-size="11" font-weight="600" fill="#334155" text-anchor="middle">
+    <!-- Sulfate Line -->
+    <rect x="150" y="35" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="190" y="50">Sulfate</text>
+
+    <rect x="150" y="105" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="190" y="120">APS</text>
+
+    <rect x="150" y="175" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="190" y="190">PAPS</text>
+
+    <rect x="150" y="245" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="190" y="260">SO₃²⁻</text>
+
+    <rect x="150" y="315" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="190" y="330">S²⁻</text>
+
+    <!-- Aspartate Line -->
+    <rect x="50" y="35" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="90" y="50">Aspartate</text>
+
+    <rect x="40" y="105" width="100" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="90" y="120" font-size="10">Aspartate semiald.</text>
+
+    <rect x="50" y="175" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="90" y="190">Homoserine</text>
+
+    <rect x="50" y="245" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="90" y="260">OAH</text>
+
+    <!-- Homocysteine Center -->
+    <rect x="100" y="385" width="100" height="26" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)" />
+    <text x="150" y="401" fill="#0f172a" font-weight="700">Homocysteine</text>
+
+    <!-- SAM Cycle -->
+    <rect x="105" y="465" width="90" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="150" y="480">Methionine</text>
+
+    <rect x="15" y="465" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="50" y="480">SAM</text>
+
+    <rect x="215" y="465" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="250" y="480">SAH</text>
+
+    <!-- Transsulfuration -->
+    <rect x="245" y="335" width="95" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="292" y="350">Cystathionine</text>
+
+    <rect x="280" y="105" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="320" y="120">Cysteine</text>
+
+    <!-- Serine Glycine pathway -->
+    <rect x="245" y="265" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="285" y="280">Serine</text>
+
+    <rect x="245" y="195" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="285" y="210">Glycine</text>
+  </g>
+
+  <!-- Center Top: Glutathione Cycle -->
+  <g font-size="11" font-weight="600" fill="#334155" text-anchor="middle">
+    <rect x="420" y="105" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="460" y="120">Glutamate</text>
+
+    <rect x="385" y="35" width="130" height="26" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)" />
+    <text x="450" y="51" fill="#0f172a" font-weight="700">γ-Glutamylcysteine</text>
+
+    <rect x="545" y="35" width="80" height="26" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)" />
+    <text x="585" y="51" fill="#065f46" font-weight="700">GSH</text>
+
+    <rect x="665" y="35" width="80" height="26" rx="6" fill="#f0fdfa" stroke="#14b8a6" stroke-width="1.5" filter="url(#shadow)" />
+    <text x="705" y="51" fill="#0f766e" font-weight="700">GSSG</text>
+
+    <rect x="400" y="175" width="100" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="450" y="190">Cysteinylglycine</text>
+  </g>
+
+  <!-- Right Side: Glycolysis & TCA Cycle Loop -->
+  <g font-size="11" font-weight="600" fill="#334155" text-anchor="middle">
+    <!-- Glycolysis -->
+    <rect x="850" y="35" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="890" y="50">Glucose</text>
+
+    <rect x="850" y="105" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="890" y="120">Glucose-6-P</text>
+
+    <rect x="850" y="175" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="890" y="190">Fructose-6-P</text>
+
+    <rect x="850" y="245" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="890" y="260">Fructose-1,6-BP</text>
+
+    <rect x="850" y="315" width="90" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="895" y="330">DHAP &amp; GAP</text>
+
+    <rect x="850" y="385" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="890" y="400">3-PG &amp; 2-PG</text>
+
+    <rect x="850" y="455" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="890" y="470">PEP</text>
+
+    <!-- Branching -->
+    <rect x="760" y="515" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="800" y="530">Pyruvate</text>
+
+    <rect x="670" y="515" width="90" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="715" y="530">Acetaldehyde</text>
+
+    <rect x="580" y="515" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="615" y="530">Acetate</text>
+
+    <rect x="680" y="445" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="720" y="460">Acetyl-CoA</text>
+
+    <rect x="680" y="550" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="715" y="565">Ethanol</text>
+
+    <!-- TCA Loop -->
+    <rect x="470" y="515" width="90" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="515" y="530">Oxaloacetate</text>
+
+    <rect x="550" y="475" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="585" y="490">Citrate</text>
+
+    <rect x="550" y="415" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="585" y="430">Isocitrate</text>
+
+    <rect x="535" y="355" width="105" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="587" y="370">α-Ketoglutarate</text>
+
+    <rect x="445" y="355" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="485" y="370">Succinyl-CoA</text>
+
+    <rect x="365" y="355" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="400" y="370">Succinate</text>
+
+    <rect x="365" y="415" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="400" y="430">Fumarate</text>
+
+    <rect x="365" y="475" width="70" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="400" y="490">L-malate</text>
+
+    <rect x="290" y="515" width="80" height="24" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)" />
+    <text x="330" y="530">Aspartate</text>
+  </g>
+
+
+  <!-- ==================== REACTION FLOW ARROWS ==================== -->
+  
+  <g stroke="#64748b" stroke-width="1.5" fill="none">
+    <!-- Sulfate Reduction arrows -->
+    <path d="M 190 59 L 190 105" marker-end="url(#arrowhead)" />
+    <path d="M 190 129 L 190 175" marker-end="url(#arrowhead)" />
+    <path d="M 190 199 L 190 245" marker-end="url(#arrowhead)" />
+    <path d="M 190 269 L 190 315" marker-end="url(#arrowhead)" />
+    <path d="M 170 339 L 155 385" marker-end="url(#arrowhead)" />
+
+    <!-- Aspartate Line arrows -->
+    <path d="M 90 59 L 90 105" marker-end="url(#arrowhead)" />
+    <path d="M 90 129 L 90 175" marker-end="url(#arrowhead)" />
+    <path d="M 90 199 L 90 245" marker-end="url(#arrowhead)" />
+    <path d="M 100 269 L 125 385" marker-end="url(#arrowhead)" />
+
+    <!-- SAM Cycle loop arrows -->
+    <path d="M 130 411 C 100 425, 60 440, 50 465" marker-end="url(#arrowhead)" />
+    <path d="M 85 477 L 105 477" marker-end="url(#arrowhead)" />
+    <path d="M 195 477 L 215 477" marker-end="url(#arrowhead)" />
+    <path d="M 235 465 C 220 440, 190 425, 170 411" marker-end="url(#arrowhead)" />
+
+    <!-- Transsulfuration paths -->
+    <path d="M 185 398 L 245 356" marker-end="url(#arrowhead)" />
+    <path d="M 285 335 L 305 129" marker-end="url(#arrowhead)" />
+    <!-- Reverse transsulfuration -->
+    <path d="M 320 129 L 297 335" marker-end="url(#arrowhead-reverse)" />
+    <path d="M 245 348 L 200 398" marker-end="url(#arrowhead)" />
+
+    <!-- Serine paths -->
+    <path d="M 285 265 L 285 219" marker-end="url(#arrowhead)" />
+    <path d="M 305 210 L 315 129" marker-end="url(#arrowhead)" />
+
+    <!-- Glutathione paths -->
+    <path d="M 360 117 C 410 117, 430 110, 440 61" marker-end="url(#arrowhead)" />
+    <path d="M 460 105 L 452 61" marker-end="url(#arrowhead)" />
+    <path d="M 515 48 L 545 48" marker-end="url(#arrowhead)" />
+    <path d="M 625 43 C 640 35, 650 35, 665 43" marker-end="url(#arrowhead)" />
+    <path d="M 665 53 C 650 61, 640 61, 625 53" marker-end="url(#arrowhead)" />
+    
+    <!-- DUG Pathway Degradation -->
+    <path d="M 585 61 L 460 175" marker-end="url(#arrowhead)" />
+    <path d="M 435 175 L 335 129" marker-end="url(#arrowhead)" />
+
+    <!-- Glycolysis arrows -->
+    <path d="M 890 59 L 890 105" marker-end="url(#arrowhead)" />
+    <path d="M 890 129 L 890 175" marker-end="url(#arrowhead)" />
+    <path d="M 890 199 L 890 245" marker-end="url(#arrowhead)" />
+    <path d="M 890 269 L 890 315" marker-end="url(#arrowhead)" />
+    <path d="M 890 339 L 890 385" marker-end="url(#arrowhead)" />
+    <path d="M 890 409 L 890 455" marker-end="url(#arrowhead)" />
+    <path d="M 890 479 C 880 500, 860 515, 840 520" marker-end="url(#arrowhead)" />
+
+    <!-- Pyruvate branch -->
+    <path d="M 760 527 L 740 527" marker-end="url(#arrowhead-reverse)" />
+    <path d="M 670 527 L 650 527" marker-end="url(#arrowhead)" />
+    <path d="M 715 515 L 715 469" marker-end="url(#arrowhead)" />
+    <path d="M 715 539 L 715 550" marker-end="url(#arrowhead)" />
+
+    <!-- TCA Loop Cycle -->
+    <path d="M 680 457 C 620 457, 600 465, 590 475" marker-end="url(#arrowhead)" />
+    <path d="M 560 520 C 570 510, 580 505, 580 499" marker-end="url(#arrowhead)" />
+    <path d="M 585 475 L 585 439" marker-end="url(#arrowhead)" />
+    <path d="M 585 415 L 585 379" marker-end="url(#arrowhead)" />
+    <path d="M 535 367 L 525 367" marker-end="url(#arrowhead-reverse)" />
+    <path d="M 445 367 L 435 367" marker-end="url(#arrowhead-reverse)" />
+    <path d="M 400 379 L 400 415" marker-end="url(#arrowhead)" />
+    <path d="M 400 439 L 400 475" marker-end="url(#arrowhead)" />
+    <path d="M 400 499 C 410 515, 430 527, 470 527" marker-end="url(#arrowhead)" />
+    <path d="M 370 527 L 470 527" marker-end="url(#arrowhead)" />
+  </g>
+
+  <!-- ==================== INTERACTIVE DYNAMIC OVERLAY ==================== -->
+  <g id="gsh-dynamic-overlay"></g>
+</svg>
