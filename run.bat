@@ -1,5 +1,5 @@
 @echo off
-:: Last Updated: 2026-07-07 15:30 (Bypassed forced Chrome profiling and restored default browser profiles for local storage maps)
+:: Last Updated: 2026-07-08 10:50 (Integrated server-backed custom gene storage and Chrome path-detection launchers)
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
@@ -39,8 +39,19 @@ if %errorlevel% neq 0 (
 
 echo * [INFO] Server detected! Launching browser...
 
-:: Launch default system browser to reuse user's logged-in active profile and local storage maps
-start http://127.0.0.1:8500
+:: Check if Chrome exists in standard program files path, otherwise use default start
+set CHROME_PATH=""
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set CHROME_PATH="%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set CHROME_PATH="%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set CHROME_PATH="%LocalAppData%\Google\Chrome\Application\chrome.exe"
+
+if not %CHROME_PATH%=="" (
+    echo * [INFO] Chrome detected. Launching Chrome...
+    start "" %CHROME_PATH% "http://127.0.0.1:8500"
+) else (
+    echo * [INFO] Chrome not found. Launching default browser...
+    start http://127.0.0.1:8500
+)
 
 echo * [SUCCESS] Launcher completed successfully.
 echo ============================================================
