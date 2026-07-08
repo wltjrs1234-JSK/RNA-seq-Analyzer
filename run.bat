@@ -1,5 +1,5 @@
 @echo off
-:: Last Updated: 2026-07-08 11:00 (Hotfixed custom gene add-handler routing integration and Chrome-prioritized launcher)
+:: Last Updated: 2026-07-08 11:24 (Hotfixed marquee gene selection, single key delete, and instant rendering logic)
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
