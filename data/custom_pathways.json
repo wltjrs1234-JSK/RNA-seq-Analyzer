@@ -767,7 +767,8 @@
       }
     ],
     "deletedDefaultGenes": [
-      "gene_1783475028472_196"
+      "gene_1783475028472_196",
+      "OPT1"
     ],
     "customGenes": [
       {
@@ -853,7 +854,8 @@
       "MDH1/2/3",
       "GDH1/3",
       "AAT1/2",
-      "PYC1/2"
+      "PYC1/2",
+      "HXT1"
     ],
     "customGenes": [],
     "geneOffsets": {}

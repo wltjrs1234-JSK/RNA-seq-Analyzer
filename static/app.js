@@ -6089,7 +6089,7 @@ function initGSHEditorBindings() {
                 const percentX = (clickX / mapWidth) * 100;
                 const percentY = (clickY / mapHeight) * 100;
                 
-                const custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                const custom = getGshCustomGenes(currentMapId);
                 const newGeneId = `gene_${Date.now()}_${Math.round(Math.random() * 1000)}`;
                 custom.push({
                     id: newGeneId,
@@ -6099,7 +6099,8 @@ function initGSHEditorBindings() {
                     rep_log2fc: repLog2fc,
                     genes: geneIsoforms
                 });
-                localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+                setGshCustomGenes(currentMapId, custom);
+                saveAllPathwayMaps();
                 
                 setGshActiveTool(null);
                 loadGSHPathwayData();
