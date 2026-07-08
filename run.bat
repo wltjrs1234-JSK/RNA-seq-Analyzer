@@ -1,5 +1,5 @@
 @echo off
-:: Last Updated: 2026-07-08 10:50 (Integrated server-backed custom gene storage and Chrome path-detection launchers)
+:: Last Updated: 2026-07-08 11:00 (Hotfixed custom gene add-handler routing integration and Chrome-prioritized launcher)
 title S. cerevisiae RNA-seq Analyzer Launcher
 cd /d "%~dp0"
 
