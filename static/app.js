@@ -15,15 +15,27 @@ let gCurrentSortOrder = 'none'; // 'none', 'asc', 'desc'
 const API_URL = "";
 
 document.addEventListener("DOMContentLoaded", () => {
-    initTabs();
-    initDropzone();
-    initControls();
-    initAdvancedAnalysisBindings();
-    initGSHZoomPan();
-    initGSHEditorBindings();
+    const runInit = (name, fn) => {
+        try {
+            fn();
+        } catch (e) {
+            console.error(`[Init Error] Failed to execute ${name}:`, e);
+        }
+    };
     
-    // Add load mock button listener
-    document.getElementById("load-mock-btn").addEventListener("click", loadMockData);
+    runInit("initTabs", initTabs);
+    runInit("initDropzone", initDropzone);
+    runInit("initControls", initControls);
+    runInit("initAdvancedAnalysisBindings", initAdvancedAnalysisBindings);
+    runInit("initGSHZoomPan", initGSHZoomPan);
+    runInit("initGSHEditorBindings", initGSHEditorBindings);
+    
+    runInit("loadMockBtn", () => {
+        const mockBtn = document.getElementById("load-mock-btn");
+        if (mockBtn) {
+            mockBtn.addEventListener("click", loadMockData);
+        }
+    });
 });
 
 // ----------------------------------------------------------------------
@@ -3997,6 +4009,72 @@ let selectedArrows = new Set();
 let selectedGenes = new Set(); // Stores gene symbol names (keys)
 let clipboardBuffer = null; // Buffer containing deep copies of copied elements
 
+function getGshGeneOffsets(mapId) {
+    const map = pathwayMapsStore[mapId];
+    if (!map) return {};
+    if (!map.geneOffsets) {
+        const local = localStorage.getItem(`gsh_gene_offsets_${mapId}`);
+        map.geneOffsets = local ? JSON.parse(local) : {};
+    }
+    return map.geneOffsets;
+}
+
+function setGshGeneOffsets(mapId, val) {
+    const map = pathwayMapsStore[mapId];
+    if (map) {
+        map.geneOffsets = val;
+        localStorage.setItem(`gsh_gene_offsets_${mapId}`, JSON.stringify(val));
+    }
+}
+
+function getGshCustomGenes(mapId) {
+    const map = pathwayMapsStore[mapId];
+    if (!map) return [];
+    if (!map.customGenes) {
+        const local = localStorage.getItem(`gsh_custom_genes_${mapId}`);
+        map.customGenes = local ? JSON.parse(local) : [];
+    }
+    return map.customGenes;
+}
+
+function setGshCustomGenes(mapId, val) {
+    const map = pathwayMapsStore[mapId];
+    if (map) {
+        map.customGenes = val;
+        localStorage.setItem(`gsh_custom_genes_${mapId}`, JSON.stringify(val));
+    }
+}
+
+function getGshDeletedDefaultGenes(mapId) {
+    const map = pathwayMapsStore[mapId];
+    if (!map) return [];
+    if (!map.deletedDefaultGenes) {
+        const local = localStorage.getItem(`gsh_deleted_default_genes_${mapId}`);
+        map.deletedDefaultGenes = local ? JSON.parse(local) : [];
+    }
+    return map.deletedDefaultGenes;
+}
+
+function setGshDeletedDefaultGenes(mapId, val) {
+    const map = pathwayMapsStore[mapId];
+    if (map) {
+        map.deletedDefaultGenes = val;
+        localStorage.setItem(`gsh_deleted_default_genes_${mapId}`, JSON.stringify(val));
+    }
+}
+
+function removeGshGeneData(mapId) {
+    const map = pathwayMapsStore[mapId];
+    if (map) {
+        delete map.geneOffsets;
+        delete map.customGenes;
+        delete map.deletedDefaultGenes;
+    }
+    localStorage.removeItem(`gsh_gene_offsets_${mapId}`);
+    localStorage.removeItem(`gsh_custom_genes_${mapId}`);
+    localStorage.removeItem(`gsh_deleted_default_genes_${mapId}`);
+}
+
 function clearSelection() {
     selectedNodes.clear();
     selectedArrows.clear();
@@ -4618,7 +4696,7 @@ function renderGSHPathway() {
                     });
                     
                     // Capture start offsets of all selected genes
-                    const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                    const savedOffsets = getGshGeneOffsets(currentMapId);
                     const startOffsets = {};
                     selectedGenes.forEach(geneKey => {
                         startOffsets[geneKey] = JSON.parse(JSON.stringify(savedOffsets[geneKey] || { dx: 0, dy: 0 }));
@@ -4666,7 +4744,7 @@ function renderGSHPathway() {
                                     };
                                 }
                             });
-                            localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+                            setGshGeneOffsets(currentMapId, savedOffsets);
                             
                             // Also bulk move selected arrows
                             selectedArrows.forEach(aid => {
@@ -4726,30 +4804,34 @@ function renderGSHPathway() {
     }
     
     // 3. Draw DEG Gene Overlays (Original overlay layer)
-    renderGSHPathwayOverlay(window.lastGSHResults || {});
+    try {
+        renderGSHPathwayOverlay(window.lastGSHResults || {});
+    } catch (e) {
+        console.error("Error rendering GSH Pathway Overlay:", e);
+    }
 }
-
+ 
 // Gene Deletion Helper
 function deleteGeneElement(key) {
-    let custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+    let custom = getGshCustomGenes(currentMapId);
     const originLen = custom.length;
     custom = custom.filter(cg => cg.symbol !== key);
-    localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+    setGshCustomGenes(currentMapId, custom);
     
-    const offsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+    const offsets = getGshGeneOffsets(currentMapId);
     delete offsets[key];
-    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(offsets));
+    setGshGeneOffsets(currentMapId, offsets);
     
     if (originLen === custom.length) {
-        const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+        const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
         deletedDefaults.push(key);
-        localStorage.setItem(`gsh_deleted_default_genes_${currentMapId}`, JSON.stringify(deletedDefaults));
+        setGshDeletedDefaultGenes(currentMapId, deletedDefaults);
     }
     
     selectedGenes.delete(key);
     loadGSHPathwayData();
 }
-
+ 
 function renderGSHPathwayOverlay(results) {
     const overlayLayer = document.getElementById("gsh-dynamic-overlay");
     if (!overlayLayer) return;
@@ -4774,8 +4856,9 @@ function renderGSHPathwayOverlay(results) {
     
     // Convert to unified list of genes to render, resolving key collisions
     const genesToRender = [];
-    const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
-    const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+    const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
+    const customGenes = getGshCustomGenes(currentMapId);
+    const savedOffsets = getGshGeneOffsets(currentMapId);
     
     // 1. Add Default Genes if not deleted
     Object.keys(results).forEach(symbol => {
@@ -4792,6 +4875,7 @@ function renderGSHPathwayOverlay(results) {
             });
         }
     });
+
     
     // 2. Add Custom Genes (Supports duplicates & key tracking)
     customGenes.forEach(cg => {
@@ -4977,7 +5061,7 @@ function renderGSHPathwayOverlay(results) {
                             };
                         }
                     });
-                    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+                    setGshGeneOffsets(currentMapId, savedOffsets);
                     
                     // Bulk Move Nodes
                     selectedNodes.forEach(nid => {
@@ -5007,14 +5091,14 @@ function renderGSHPathwayOverlay(results) {
                 } else {
                     // Single Gene move
                     const sOffset = startOffsets[key];
-                    const currentOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                    const currentOffsets = getGshGeneOffsets(currentMapId);
                     if (sOffset) {
                         currentOffsets[key] = {
                             dx: sOffset.dx + correctedDx,
                             dy: sOffset.dy + correctedDy
                         };
                     }
-                    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(currentOffsets));
+                    setGshGeneOffsets(currentMapId, currentOffsets);
                 }
                 
                 renderGSHPathway();
@@ -5028,6 +5112,7 @@ function renderGSHPathwayOverlay(results) {
                     document.removeEventListener("mousemove", handleMouseMove);
                     document.removeEventListener("mouseup", handleMouseUp);
                     
+                    saveAllPathwayMaps();
                     renderGSHPathway();
                 }
             };
@@ -5039,7 +5124,7 @@ function renderGSHPathwayOverlay(results) {
         // Double click to rename custom gene
         box.addEventListener("dblclick", (e) => {
             e.stopPropagation();
-            const custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+            const custom = getGshCustomGenes(currentMapId);
             const cg = custom.find(g => g.id === key);
             if (cg) {
                 const newSymbol = prompt("유전자 이름을 수정하세요:", cg.symbol);
@@ -5060,7 +5145,7 @@ function renderGSHPathwayOverlay(results) {
                     cg.rep_log2fc = repLog2fc;
                     cg.genes = geneIsoforms;
                     
-                    localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+                    setGshCustomGenes(currentMapId, custom);
                     loadGSHPathwayData();
                 }
             }
@@ -5171,9 +5256,7 @@ function initGSHZoomPan() {
     if (btnSync) {
         btnSync.addEventListener("click", () => {
             if (confirm("현재 활성화된 대사 경로 레이아웃 및 커스텀 노드를 기본값으로 완전히 리셋하시겠습니까?")) {
-                localStorage.removeItem(`gsh_gene_offsets_${currentMapId}`);
-                localStorage.removeItem(`gsh_custom_genes_${currentMapId}`);
-                localStorage.removeItem(`gsh_deleted_default_genes_${currentMapId}`);
+                removeGshGeneData(currentMapId);
                 
                 // If resetting default map, clear map store entry to fetch raw default JSON
                 if (currentMapId === "yeast_gsh_pathway") {
@@ -5445,8 +5528,8 @@ function initGSHZoomPan() {
                 });
                 
                 // 2. Gather genes
-                const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
-                const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                const savedOffsets = getGshGeneOffsets(currentMapId);
+                const customGenes = getGshCustomGenes(currentMapId);
                 
                 const mergedResults = JSON.parse(JSON.stringify(window.lastGSHResults || {}));
                 customGenes.forEach(cg => {
@@ -5455,7 +5538,7 @@ function initGSHZoomPan() {
                     }
                 });
                 
-                const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+                const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
                 deletedDefaults.forEach(delKey => {
                     delete mergedResults[delKey];
                 });
@@ -5600,19 +5683,19 @@ function initGSHHotkeyBindings() {
                 
                 // 3. Delete Genes
                 selectedGenes.forEach(key => {
-                    let custom = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
+                    let custom = getGshCustomGenes(currentMapId);
                     const originLen = custom.length;
                     custom = custom.filter(cg => cg.symbol !== key);
-                    localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(custom));
+                    setGshCustomGenes(currentMapId, custom);
                     
-                    const offsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+                    const offsets = getGshGeneOffsets(currentMapId);
                     delete offsets[key];
-                    localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(offsets));
+                    setGshGeneOffsets(currentMapId, offsets);
                     
                     if (originLen === custom.length) {
-                        const deletedDefaults = JSON.parse(localStorage.getItem(`gsh_deleted_default_genes_${currentMapId}`) || "[]");
+                        const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
                         deletedDefaults.push(key);
-                        localStorage.setItem(`gsh_deleted_default_genes_${currentMapId}`, JSON.stringify(deletedDefaults));
+                        setGshDeletedDefaultGenes(currentMapId, deletedDefaults);
                     }
                 });
                 selectedGenes.clear();
@@ -5627,8 +5710,8 @@ function initGSHHotkeyBindings() {
             e.preventDefault();
             
             const nodesMap = getNodesMap();
-            const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
-            const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+            const customGenes = getGshCustomGenes(currentMapId);
+            const savedOffsets = getGshGeneOffsets(currentMapId);
             
             const copiedNodes = [];
             const copiedArrows = [];
@@ -5704,8 +5787,8 @@ function initGSHHotkeyBindings() {
             });
             
             // Paste Genes
-            const customGenes = JSON.parse(localStorage.getItem(`gsh_custom_genes_${currentMapId}`) || "[]");
-            const savedOffsets = JSON.parse(localStorage.getItem(`gsh_gene_offsets_${currentMapId}`) || "{}");
+            const customGenes = getGshCustomGenes(currentMapId);
+            const savedOffsets = getGshGeneOffsets(currentMapId);
             
             clipboardBuffer.genes.forEach((g) => {
                 let symbol = g.symbol;
@@ -5734,8 +5817,8 @@ function initGSHHotkeyBindings() {
                 selectedGenes.add(symbol);
             });
             
-            localStorage.setItem(`gsh_custom_genes_${currentMapId}`, JSON.stringify(customGenes));
-            localStorage.setItem(`gsh_gene_offsets_${currentMapId}`, JSON.stringify(savedOffsets));
+            setGshCustomGenes(currentMapId, customGenes);
+            setGshGeneOffsets(currentMapId, savedOffsets);
             
             // Paste Arrows
             clipboardBuffer.arrows.forEach((oldArrow, idx) => {
@@ -5844,9 +5927,7 @@ function initGSHEditorBindings() {
             if (!currentMap) return;
             if (confirm(`'${currentMap.name}' 맵을 정말 완전히 삭제하시겠습니까?`)) {
                 // Delete references
-                localStorage.removeItem(`gsh_gene_offsets_${currentMapId}`);
-                localStorage.removeItem(`gsh_custom_genes_${currentMapId}`);
-                localStorage.removeItem(`gsh_deleted_default_genes_${currentMapId}`);
+                removeGshGeneData(currentMapId);
                 
                 delete pathwayMapsStore[currentMapId];
                 saveAllPathwayMaps();
@@ -5956,7 +6037,10 @@ function initGSHEditorBindings() {
     svgEl.addEventListener("click", (e) => {
         if (!isGshEditMode || !activeGshTool) return;
         
-        if (e.target.tagName !== "rect" && e.target.id !== "gsh-pathway-svg") return;
+        // Prevent action if clicking on existing nodes, arrows, or gene badges
+        if (e.target.closest(".gsh-pathway-node-group") || e.target.closest(".gsh-pathway-arrow-group") || e.target.closest(".gsh-gene-badge-group")) {
+            return;
+        }
         
         const currentMap = pathwayMapsStore[currentMapId];
         if (!currentMap) return;

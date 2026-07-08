@@ -2038,6 +2038,7 @@ def get_mock_file():
     raise HTTPException(status_code=404, detail="Mock file not found. Please run generate_mock_data.py first.")
 
 # Mount static files folder (will serve our frontend UI)
+app.mount("/static", StaticFiles(directory="static"), name="static_dir")
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
