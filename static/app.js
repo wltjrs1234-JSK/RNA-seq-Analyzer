@@ -4084,8 +4084,8 @@ function clearSelection() {
 function saveAllPathwayMaps() {
     localStorage.setItem("pathway_maps_store", JSON.stringify(pathwayMapsStore));
     
-    // Backup pathway maps to the server
-    fetch(`${API_URL}/api/pathway_maps`, {
+    // Backup pathway maps to the server and return Promise
+    return fetch(`${API_URL}/api/pathway_maps`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -4097,9 +4097,11 @@ function saveAllPathwayMaps() {
         if (!data.success) {
             console.error("Server pathway backup failed:", data.message);
         }
+        return data;
     })
     .catch(err => {
         console.error("Error backing up pathways to server:", err);
+        throw err;
     });
 }
 
@@ -5527,32 +5529,46 @@ function initGSHZoomPan() {
                     }
                 });
                 
-                // 2. Gather genes
+                // 2. Gather genes (using same ID alignment as overlay renderer)
                 const savedOffsets = getGshGeneOffsets(currentMapId);
                 const customGenes = getGshCustomGenes(currentMapId);
+                const results = window.lastGSHResults || {};
                 
-                const mergedResults = JSON.parse(JSON.stringify(window.lastGSHResults || {}));
-                customGenes.forEach(cg => {
-                    if (!mergedResults[cg.symbol]) {
-                        mergedResults[cg.symbol] = { x: cg.x, y: cg.y };
+                const genesToRender = [];
+                const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
+                
+                // Add Default Genes if not deleted
+                Object.keys(results).forEach(symbol => {
+                    if (!deletedDefaults.includes(symbol)) {
+                        const item = results[symbol];
+                        genesToRender.push({
+                            id: symbol,
+                            x: item.x,
+                            y: item.y
+                        });
                     }
                 });
                 
-                const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
-                deletedDefaults.forEach(delKey => {
-                    delete mergedResults[delKey];
+                // Add Custom Genes
+                customGenes.forEach(cg => {
+                    const uniqueId = cg.id || `gene_legacy_${cg.symbol}_${Math.random()}`;
+                    genesToRender.push({
+                        id: uniqueId,
+                        x: cg.x,
+                        y: cg.y
+                    });
                 });
                 
-                Object.keys(mergedResults).forEach(key => {
-                    const item = mergedResults[key];
+                // Check each gene's bounding area fallback
+                genesToRender.forEach(item => {
                     const baseX = (item.x * mapWidth) / 100;
                     const baseY = (item.y * mapHeight) / 100;
-                    const offset = savedOffsets[key] || { dx: 0, dy: 0 };
+                    const offset = savedOffsets[item.id] || { dx: 0, dy: 0 };
                     const finalX = baseX + offset.dx;
                     const finalY = baseY + offset.dy;
                     
                     if (isPointInMarquee(finalX, finalY)) {
-                        selectedGenes.add(key);
+                        selectedGenes.add(item.id);
                     }
                 });
                 
@@ -5681,27 +5697,34 @@ function initGSHHotkeyBindings() {
                 });
                 selectedNodes.clear();
                 
-                // 3. Delete Genes
+                // 3. Delete Genes (integrated ID/Symbol resolver)
+                let custom = getGshCustomGenes(currentMapId);
+                const offsets = getGshGeneOffsets(currentMapId);
+                const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
+                
                 selectedGenes.forEach(key => {
-                    let custom = getGshCustomGenes(currentMapId);
-                    const originLen = custom.length;
-                    custom = custom.filter(cg => cg.symbol !== key);
-                    setGshCustomGenes(currentMapId, custom);
+                    const isCustomGene = custom.some(cg => (cg.id === key) || (!cg.id && cg.symbol === key));
                     
-                    const offsets = getGshGeneOffsets(currentMapId);
-                    delete offsets[key];
-                    setGshGeneOffsets(currentMapId, offsets);
-                    
-                    if (originLen === custom.length) {
-                        const deletedDefaults = getGshDeletedDefaultGenes(currentMapId);
-                        deletedDefaults.push(key);
-                        setGshDeletedDefaultGenes(currentMapId, deletedDefaults);
+                    if (isCustomGene) {
+                        custom = custom.filter(cg => {
+                            if (cg.id) return cg.id !== key;
+                            return cg.symbol !== key;
+                        });
+                    } else {
+                        if (!deletedDefaults.includes(key)) {
+                            deletedDefaults.push(key);
+                        }
                     }
+                    delete offsets[key];
                 });
+                
+                setGshCustomGenes(currentMapId, custom);
+                setGshGeneOffsets(currentMapId, offsets);
+                setGshDeletedDefaultGenes(currentMapId, deletedDefaults);
                 selectedGenes.clear();
                 
                 saveAllPathwayMaps();
-                loadGSHPathwayData();
+                renderGSHPathway(); // Render immediately using local memory store to bypass REST loading delays
             }
         }
         
@@ -6103,7 +6126,7 @@ function initGSHEditorBindings() {
                 saveAllPathwayMaps();
                 
                 setGshActiveTool(null);
-                loadGSHPathwayData();
+                renderGSHPathway(); // Render immediately using local memory store to bypass REST loading delays
             }
         }
     });
